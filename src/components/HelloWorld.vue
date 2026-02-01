@@ -30,33 +30,29 @@ defineProps<{
 
 <template>
   <div class="greetings">
-    <button @click="send">send</button>
-    <!-- <p v-for="id in messageId">{{ id }}</p> -->
-    <hr />
+    <button class="send-btn" @click="send">Send</button>
+    <hr class="divider" />
   </div>
 </template>
 
 <style scoped>
-h1 {
-  font-weight: 500;
-  font-size: 2.6rem;
-  position: relative;
-  top: -10px;
+.send-btn {
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
 }
-
-h3 {
-  font-size: 1.2rem;
+.send-btn:hover {
+  background-color: #f5f5f5;
 }
-
-.greetings h1,
-.greetings h3 {
-  text-align: center;
+.send-btn:active {
+  background-color: #ccc;
 }
-
-@media (min-width: 1024px) {
-  .greetings h1,
-  .greetings h3 {
-    text-align: left;
-  }
+.send-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+.divider {
+  margin: 10px 0;
 }
 </style>

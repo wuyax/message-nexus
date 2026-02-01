@@ -25,6 +25,7 @@ bridge2.onCommand((data) => {
 function send(id: string) {
   try {
     bridge2.reply(id, { result: 'success' })
+    messageId.value = messageId.value.filter((item) => item !== id)
   } catch (error) {
     console.log(error)
   }
@@ -39,38 +40,36 @@ function send(id: string) {
   </header>
 
   <main>
-    <p v-for="id in messageId">
-      <span>{{ id }}</span>
-      <button @click="send(id)">reply</button>
+    <p v-for="id in messageId" class="message-item">
+      <span class="message-id">Message ID: {{ id }}</span>
+      <button class="reply-btn" @click="send(id)">Reply</button>
     </p>
   </main>
 </template>
 
 <style scoped>
-header {
-  line-height: 1.5;
+.message-item {
+  margin-bottom: 10px;
 }
-
-.logo {
-  display: block;
-  margin: 0 auto 2rem;
+.message-id {
+  margin-right: 10px;
+  font-family: monospace;
 }
-
-@media (min-width: 1024px) {
-  header {
-    display: flex;
-    place-items: center;
-    padding-right: calc(var(--section-gap) / 2);
-  }
-
-  .logo {
-    margin: 0 2rem 0 0;
-  }
-
-  header .wrapper {
-    display: flex;
-    place-items: flex-start;
-    flex-wrap: wrap;
-  }
+.reply-btn {
+  margin-left: 10px;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+}
+.reply-btn:hover {
+  background-color: #f5f5f5;
+}
+.reply-btn:active {
+  background-color: #ccc;
+}
+.reply-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 </style>
