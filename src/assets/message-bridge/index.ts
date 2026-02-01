@@ -149,7 +149,6 @@ export default class MessageBridge<RequestPayload = unknown, ResponsePayload = u
 
         this._sendMessage(message)
       }).catch((error) => {
-        console.log(111, error, attemptNumber, retryCount)
         if (attemptNumber < retryCount) {
           return new Promise<ResponsePayload>((resolve) =>
             setTimeout(() => resolve(attempt(attemptNumber + 1)), retryDelay * (attemptNumber + 1)),
@@ -165,7 +164,6 @@ export default class MessageBridge<RequestPayload = unknown, ResponsePayload = u
   }
 
   private _sendMessage(message: Message) {
-    console.log(222, message)
     try {
       this.driver.send(message)
       this.metrics.messagesSent++

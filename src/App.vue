@@ -14,32 +14,35 @@ bridge.onCommand((data) => {
   bridge.reply(data.id, { result: 'success' })
 })
 
-let messageId = ref('')
+let messageId = ref<string[]>([])
 const driver2 = new MittDriver(emitter)
 const bridge2 = new MessageBridge(driver2, { instanceId: 'myBridgeId' })
 bridge2.onCommand((data) => {
   console.log(data)
-  messageId.value = data.id
+  messageId.value.push(data.id)
 })
 
-function send() {
-  bridge2.reply(messageId.value, { result: 'success' })
+function send(id: string) {
+  try {
+    bridge2.reply(id, { result: 'success' })
+  } catch (error) {
+    console.log(error)
+  }
 }
 </script>
 
 <template>
   <header>
-    <img alt="Vue logo" class="logo" src="./assets/logo.svg" width="125" height="125" />
-
     <div class="wrapper">
-      <HelloWorld msg="You did it!" />
+      <HelloWorld msg="Sended messages" />
     </div>
   </header>
 
   <main>
-    <TheWelcome />
-    <button @click="send">reply</button>
-    <p>{{ messageId }}</p>
+    <p v-for="id in messageId">
+      <span>{{ id }}</span>
+      <button @click="send(id)">reply</button>
+    </p>
   </main>
 </template>
 

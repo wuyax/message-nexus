@@ -10,7 +10,7 @@ function send() {
   bridge
     .request({
       type: 'anov.create',
-      payload: { name: 'test' },
+      payload: { name: 'test' + Math.random() },
       to: 'myBridgeId',
       retryCount: 3,
       retryDelay: 1000,
@@ -30,13 +30,9 @@ defineProps<{
 
 <template>
   <div class="greetings">
-    <h1 class="green">{{ msg }}</h1>
-    <h3>
-      You’ve successfully created a project with
-      <a href="https://vite.dev/" target="_blank" rel="noopener">Vite</a> +
-      <a href="https://vuejs.org/" target="_blank" rel="noopener">Vue 3</a>.
-    </h3>
     <button @click="send">send</button>
+    <!-- <p v-for="id in messageId">{{ id }}</p> -->
+    <hr />
   </div>
 </template>
 
