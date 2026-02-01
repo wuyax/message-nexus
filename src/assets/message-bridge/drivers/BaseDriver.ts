@@ -1,10 +1,20 @@
-// BaseDriver 结构参考
+export interface Message {
+  id: string
+  type: string
+  payload?: unknown
+  from: string
+  to?: string
+  metadata?: Record<string, unknown>
+  isResponse?: boolean
+  error?: unknown
+}
+
 export default class BaseDriver {
-  onMessage: ((data: any) => void) | null
+  onMessage: ((data: Message) => void) | null
   constructor() {
-    this.onMessage = null // 由 Bridge 注入
+    this.onMessage = null
   }
-  send(data: any) {
+  send(data: Message) {
     throw new Error('Not implemented')
   }
 }

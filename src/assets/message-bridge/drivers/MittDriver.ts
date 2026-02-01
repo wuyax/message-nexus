@@ -1,14 +1,16 @@
 import type { Emitter } from 'mitt'
-import BaseDriver from './BaseDriver'
+import BaseDriver, { type Message } from './BaseDriver'
 
 export default class MittDriver extends BaseDriver {
-  emitter: Emitter<any>
-  constructor(emitter: Emitter<any>) {
+  emitter: Emitter<Record<string, Message>>
+  constructor(emitter: Emitter<Record<string, Message>>) {
     super()
     this.emitter = emitter
-    this.emitter.on('message', (data) => this.onMessage?.(data))
+    this.emitter.on('message', (data) => {
+      if (data) this.onMessage?.(data)
+    })
   }
-  send(data: any) {
+  send(data: Message) {
     this.emitter.emit('message', data)
   }
 }
