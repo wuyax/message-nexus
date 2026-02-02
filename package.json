@@ -6,6 +6,7 @@
   "description": "A unified, type-safe, multi-protocol cross-context message communication library",
   "scripts": {
     "dev": "pnpm --filter @message-bridge/example dev",
+    "dev:ws": "pnpm --filter @message-bridge/server start",
     "build": "pnpm --filter message-bridge build && pnpm --filter @message-bridge/example build",
     "build:core": "pnpm --filter message-bridge build",
     "build:example": "pnpm --filter @message-bridge/example build",

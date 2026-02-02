@@ -98,6 +98,12 @@ importers:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@24.10.9)(jsdom@27.4.0)(yaml@2.8.2)
 
+  packages/websocket-server:
+    devDependencies:
+      ws:
+        specifier: ^8.19.0
+        version: 8.19.0
+
 packages:
 
   '@acemir/cssom@0.9.31':
