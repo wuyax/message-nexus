@@ -1,6 +1,9 @@
 import BaseDriver, { type Message } from './BaseDriver'
 import { Logger, createConsoleHandler, LogLevel } from '../utils/logger'
 
+// Protocol identifier to distinguish MessageBridge messages from other WebSocket traffic
+const MESSAGE_BRIDGE_PROTOCOL = 'message-bridge-v1'
+
 interface ReconnectOptions {
   maxRetries?: number
   retryInterval?: number
@@ -49,9 +52,20 @@ export default class WebSocketDriver extends BaseDriver {
 
     this.ws.addEventListener('message', (event) => {
       try {
-        const data = JSON.parse(event.data) as Message
-        this.logger.debug('Message received', { data })
-        this.onMessage?.(data)
+        const rawData = JSON.parse(event.data)
+        // Verify protocol and extract message
+        if (
+          typeof rawData === 'object' &&
+          rawData !== null &&
+          '__messageBridge' in rawData &&
+          rawData.__messageBridge === MESSAGE_BRIDGE_PROTOCOL
+        ) {
+          const { __messageBridge, ...data } = rawData
+          this.logger.debug('Message received', { data })
+          this.onMessage?.(data as Message)
+        } else {
+          this.logger.debug('Ignored non-bridge message', { data: rawData })
+        }
       } catch (error) {
         this.logger.error('Failed to parse WebSocket message', { error, data: event.data })
       }
@@ -99,7 +113,11 @@ export default class WebSocketDriver extends BaseDriver {
       throw new Error('WebSocket is not open')
     }
     this.logger.debug('Sending message', { data })
-    this.ws.send(JSON.stringify(data))
+    const bridgeMessage = {
+      ...data,
+      __messageBridge: MESSAGE_BRIDGE_PROTOCOL,
+    }
+    this.ws.send(JSON.stringify(bridgeMessage))
   }
 
   close() {
