@@ -18,6 +18,9 @@ import { RouterLink, RouterView } from 'vue-router'
           <RouterLink to="/broadcast" class="nav-link" active-class="active">
             BroadcastDriver
           </RouterLink>
+          <RouterLink to="/websocket" class="nav-link" active-class="active">
+            WebSocketDriver
+          </RouterLink>
         </nav>
       </div>
     </header>
@@ -29,7 +32,7 @@ import { RouterLink, RouterView } from 'vue-router'
     <footer class="app-footer">
       <p>
         Built with
-        <a href="https://github.com/code-yeongyu/message-bridge" target="_blank" rel="noopener">
+        <a href="https://github.com/wuyax/message-bridge" target="_blank" rel="noopener">
           MessageBridge
         </a>
       </p>
