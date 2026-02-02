@@ -15,6 +15,9 @@ import { RouterLink, RouterView } from 'vue-router'
           <RouterLink to="/postmessage" class="nav-link" active-class="active">
             PostMessageDriver
           </RouterLink>
+          <RouterLink to="/broadcast" class="nav-link" active-class="active">
+            BroadcastDriver
+          </RouterLink>
         </nav>
       </div>
     </header>
