@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import Sender from './components/Sender.vue'
+import PostMessageDemo from './components/PostMessageDemo.vue'
 import { MittDriver, emitter } from 'message-bridge'
 import MessageBridge from 'message-bridge'
 
+// MittDriver Example
 const driver = new MittDriver(emitter)
 const bridge = new MessageBridge(driver)
 
@@ -31,17 +33,27 @@ function send(id: string) {
 </script>
 
 <template>
-  <header>
+  <div>
     <div class="wrapper">
       <Sender />
     </div>
-  </header>
+  </div>
 
   <main>
-    <p v-for="id in messageId" class="message-item">
-      <span class="message-id">Message ID: {{ id }}</span>
-      <button class="reply-btn" @click="send(id)">Reply</button>
-    </p>
+    <!-- MittDriver Example -->
+    <section class="demo-section">
+      <h2>MittDriver Example (In-Process)</h2>
+      <p v-for="id in messageId" :key="id" class="message-item">
+        <span class="message-id">Message ID: {{ id }}</span>
+        <button class="reply-btn" @click="send(id)">Reply</button>
+      </p>
+    </section>
+
+    <!-- PostMessageDriver Example -->
+    <section class="demo-section">
+      <h2>PostMessageDriver Example (Cross-Window)</h2>
+      <PostMessageDemo />
+    </section>
   </main>
 </template>
 
@@ -69,5 +81,14 @@ function send(id: string) {
 .reply-btn:disabled {
   background-color: #ccc;
   cursor: not-allowed;
+}
+.demo-section {
+  margin-bottom: 40px;
+}
+.demo-section h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #333;
 }
 </style>
