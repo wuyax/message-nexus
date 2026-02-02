@@ -1,5 +1,5 @@
 import mitt from 'mitt'
-import type { Message } from './drivers/BaseDriver'
+import type { Message } from '../drivers/BaseDriver'
 
 const emitter = mitt<Record<string, Message>>()
 

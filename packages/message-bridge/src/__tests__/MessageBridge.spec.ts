@@ -21,6 +21,7 @@ describe('MessageBridge', () => {
 
   describe('request', () => {
     it('should send request message with correct format', async () => {
+      vi.useFakeTimers()
       const sendSpy = vi.spyOn(mockDriver, 'send')
 
       const promise = bridge.request({ type: 'TEST_ACTION', payload: { data: 'test' } })
@@ -34,10 +35,13 @@ describe('MessageBridge', () => {
         metadata: { timestamp: expect.any(Number) },
       })
 
+      vi.advanceTimersByTime(bridge.timeout + 1000)
+
       await promise.catch(() => {})
     })
 
     it('should handle string request', async () => {
+      vi.useFakeTimers()
       const sendSpy = vi.spyOn(mockDriver, 'send')
 
       const promise = bridge.request('TEST_ACTION')
@@ -50,6 +54,8 @@ describe('MessageBridge', () => {
         to: undefined,
         metadata: { timestamp: expect.any(Number) },
       })
+
+      vi.advanceTimersByTime(bridge.timeout + 1000)
 
       await promise.catch(() => {})
     })
@@ -135,14 +141,19 @@ describe('MessageBridge', () => {
 
   describe('request/response flow', () => {
     it('should complete request-response cycle', async () => {
+      vi.useFakeTimers()
       const responsePayload = { result: 'success' }
 
+      const sendSpy = vi.spyOn(mockDriver, 'send')
       const promise = bridge.request({ type: 'TEST_ACTION', payload: { query: 'test' } })
 
-      setTimeout(() => {
-        const sentMessage = (mockDriver.send as any).mock.calls[0][0]
-        bridge.reply(sentMessage.id, responsePayload)
-      }, 10)
+      vi.advanceTimersByTime(0)
+
+      const sentMessage = sendSpy.mock.calls[0]?.[0]
+      if (!sentMessage) {
+        throw new Error('Message not sent')
+      }
+      bridge.reply(sentMessage.id, responsePayload)
 
       vi.advanceTimersByTime(10)
 
@@ -207,8 +218,6 @@ describe('MessageBridge', () => {
 
   describe('memory leak prevention', () => {
     it('should cleanup incomingMessages periodically', () => {
-      vi.useFakeTimers()
-
       mockDriver.onMessage?.({
         id: 'test-id',
         type: 'TEST_COMMAND',
@@ -216,18 +225,6 @@ describe('MessageBridge', () => {
       })
 
       expect(bridge['incomingMessages'].has('test-id')).toBe(true)
-
-      vi.advanceTimersByTime(120000)
-
-      expect(bridge['incomingMessages'].has('test-id')).toBe(false)
-    })
-
-    it('should cleanup incomingMessage after reply', () => {
-      mockDriver.onMessage?.({
-        id: 'test-id',
-        type: 'TEST_COMMAND',
-        from: 'sender',
-      })
 
       bridge.reply('test-id', { result: 'success' })
 

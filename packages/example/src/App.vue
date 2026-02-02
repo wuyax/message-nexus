@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import Sender from './components/Sender.vue'
-import MittDriver from './assets/message-bridge/drivers/MittDriver'
-import MessageBridge from './assets/message-bridge'
-import emitter from './assets/message-bridge/mitter'
+import { MittDriver, emitter } from 'message-bridge'
+import MessageBridge from 'message-bridge'
 
 const driver = new MittDriver(emitter)
 const bridge = new MessageBridge(driver)

@@ -1,48 +1,161 @@
-# message-bridge
+# MessageBridge Monorepo
 
-This template should help get you started developing with Vue 3 in Vite.
+一个统一、类型安全、支持多种传输协议的跨上下文消息通信库。
 
-## Recommended IDE Setup
+## Monorepo 结构
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+这是一个使用 pnpm workspaces 的 monorepo 项目，包含以下包：
 
-## Recommended Browser Setup
+- **`packages/message-bridge`**: 核心 npm 包
+- **`packages/example`**: Vue3 示例应用，用于验证和演示
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+## 快速开始
 
-## Type Support for `.vue` Imports in TS
+### 安装依赖
 
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
-npm install
+```bash
+pnpm install
 ```
 
-### Compile and Hot-Reload for Development
+### 开发
 
-```sh
-npm run dev
+启动 Vue3 示例应用（热更新）：
+
+```bash
+pnpm dev
 ```
 
-### Type-Check, Compile and Minify for Production
+### 构建
 
-```sh
-npm run build
+构建所有包：
+
+```bash
+pnpm build
 ```
 
-### Run Unit Tests with [Vitest](https://vitest.dev/)
+仅构建核心包：
 
-```sh
-npm run test:unit
+```bash
+pnpm build:core
 ```
+
+仅构建示例应用：
+
+```bash
+pnpm build:example
+```
+
+### 测试
+
+运行测试（带监视模式）：
+
+```bash
+pnpm test
+```
+
+运行测试（单次运行）：
+
+```bash
+pnpm test:run
+```
+
+### 类型检查
+
+```bash
+pnpm type-check
+```
+
+### 格式化代码
+
+```bash
+pnpm lint
+```
+
+## message-bridge
+
+核心消息通信库，支持以下特性：
+
+- **统一接口**: 支持 Mitt（进程内）、PostMessage（iframe/window 间）、WebSocket（网络通信）
+- **类型安全**: 完整的 TypeScript 支持，泛型类型推断
+- **请求-响应模式**: Promise 风格的异步通信，内置超时保护
+- **自动重连**: WebSocket 自动重连机制，支持指数退避
+- **消息队列**: 离线消息缓存，连接恢复后自动发送
+- **重试机制**: 请求失败自动重试，可配置重试次数和延迟
+- **消息验证**: 运行时消息格式验证，防止非法消息
+- **监控指标**: 内置消息统计和性能监控
+- **结构化日志**: 支持自定义日志处理器，便于调试和生产监控
+
+### 使用示例
+
+```typescript
+import { MittDriver, MessageBridge, emitter } from 'message-bridge'
+
+const driver = new MittDriver(emitter)
+const bridge = new MessageBridge(driver)
+
+// 发送请求
+const response = await bridge.request({
+  type: 'GET_DATA',
+  payload: { id: 123 },
+})
+
+// 监听命令
+const unsubscribe = bridge.onCommand((data) => {
+  if (data.type === 'GET_DATA') {
+    bridge.reply(data.id, { name: 'test', value: 42 })
+  }
+})
+```
+
+详细 API 文档请参考 [packages/message-bridge](./packages/message-bridge/README.md)。
+
+## @message-bridge/example
+
+Vue3 示例应用，演示如何在 Vue 项目中使用 `message-bridge`。
+
+### 运行示例
+
+```bash
+pnpm dev
+```
+
+然后访问 http://localhost:5173
+
+## 工作空间命令
+
+在 monorepo 根目录，你可以使用以下命令针对特定工作空间执行操作：
+
+```bash
+# 在 message-bridge 包中运行命令
+pnpm --filter message-bridge <command>
+
+# 在 example 包中运行命令
+pnpm --filter @message-bridge/example <command>
+
+# 在所有包中运行命令
+pnpm --filter ./packages/** <command>
+```
+
+## 发布流程
+
+### 1. 更新版本号
+
+```bash
+pnpm --filter message-bridge version <major|minor|patch>
+```
+
+### 2. 构建包
+
+```bash
+pnpm build:core
+```
+
+### 3. 发布到 npm
+
+```bash
+pnpm --filter message-bridge publish
+```
+
+## 许可证
+
+MIT

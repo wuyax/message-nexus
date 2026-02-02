@@ -3,6 +3,7 @@ import MittDriver from './drivers/MittDriver'
 import PostMessageDriver from './drivers/PostMessageDriver'
 import WebSocketDriver from './drivers/WebSocktDriver'
 import { Logger, createConsoleHandler } from './utils/logger'
+import emitter from './utils/emitter'
 
 interface MessageBridgeOptions {
   instanceId?: string
@@ -46,7 +47,7 @@ export default class MessageBridge<RequestPayload = unknown, ResponsePayload = u
     {
       resolve: (value: ResponsePayload) => void
       reject: (reason?: unknown) => void
-      timer: number
+      timer: ReturnType<typeof setTimeout>
       to?: string
       timestamp: number
     }
@@ -55,7 +56,7 @@ export default class MessageBridge<RequestPayload = unknown, ResponsePayload = u
   messageHandlers: Set<(data: CommandMessage) => void>
   timeout: number
   instanceId: string
-  private cleanupInterval: number | null = null
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null
   private messageQueue: Message[] = []
   private maxQueueSize: number = 100
   private errorHandler: ErrorHandler | null = null
@@ -333,5 +334,5 @@ export default class MessageBridge<RequestPayload = unknown, ResponsePayload = u
   }
 }
 
-export { BaseDriver, MittDriver, PostMessageDriver, WebSocketDriver }
-export type { MessageBridgeOptions, RequestOptions }
+export { BaseDriver, MittDriver, PostMessageDriver, WebSocketDriver, emitter }
+export type { MessageBridgeOptions, RequestOptions, Message }

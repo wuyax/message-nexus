@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import MessageBridge from '../assets/message-bridge'
-import MittDriver from '../assets/message-bridge/drivers/MittDriver'
-import emitter from '../assets/message-bridge/mitter'
+import MessageBridge from 'message-bridge'
+import { MittDriver, emitter } from 'message-bridge'
 
 const driver = new MittDriver(emitter)
 const bridge = new MessageBridge(driver)

@@ -1,38 +1,31 @@
 {
-  "name": "message-bridge",
+  "name": "message-bridge-monorepo",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "description": "A unified, type-safe, multi-protocol cross-context message communication library",
   "scripts": {
-    "dev": "vite",
-    "build": "run-p type-check \"build-only {@}\" --",
-    "preview": "vite preview",
-    "test:unit": "vitest",
-    "build-only": "vite build",
-    "type-check": "vue-tsc --build",
-    "format": "prettier --write --experimental-cli src/"
-  },
-  "dependencies": {
-    "mitt": "^3.0.1",
-    "vue": "^3.5.27"
+    "dev": "pnpm --filter @message-bridge/example dev",
+    "build": "pnpm --filter message-bridge build && pnpm --filter @message-bridge/example build",
+    "build:core": "pnpm --filter message-bridge build",
+    "build:example": "pnpm --filter @message-bridge/example build",
+    "test": "pnpm --filter message-bridge test",
+    "test:run": "pnpm --filter message-bridge test:run",
+    "type-check": "pnpm --filter message-bridge type-check",
+    "lint": "prettier --write --experimental-cli \"packages/*/src/**/*.{ts,vue}\"",
+    "clean": "pnpm --filter ./packages/** -r clean && rm -rf node_modules"
   },
   "devDependencies": {
-    "@tsconfig/node24": "^24.0.4",
-    "@types/jsdom": "^27.0.0",
-    "@types/node": "^24.10.9",
-    "@vitejs/plugin-vue": "^6.0.3",
-    "@vue/test-utils": "^2.4.6",
-    "@vue/tsconfig": "^0.8.1",
-    "jsdom": "^27.4.0",
-    "npm-run-all2": "^8.0.4",
     "prettier": "3.8.1",
-    "typescript": "~5.9.3",
-    "vite": "^7.3.1",
-    "vite-plugin-vue-devtools": "^8.0.5",
-    "vitest": "^4.0.18",
-    "vue-tsc": "^3.2.4"
+    "tsup": "^8.4.0",
+    "typescript": "~5.9.3"
   },
+  "packageManager": "pnpm@10.0.0",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
-  }
+    "node": "^20.19.0 || >=22.12.0",
+    "pnpm": ">=10.0.0"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }
