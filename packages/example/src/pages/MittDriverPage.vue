@@ -6,7 +6,7 @@ import MessageNexus from 'message-nexus'
 import { emitter } from '../assets/utils'
 
 const driver = new MittDriver(emitter)
-const nexus = new MessageNexus(driver, { instanceId: 'myBridgeId' })
+const nexus = new MessageNexus(driver, { instanceId: 'myBridgeId', loggerEnabled: true })
 let messageId = ref<string[]>([])
 nexus.onCommand((data) => {
   console.log(data)

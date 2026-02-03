@@ -15,14 +15,58 @@ export interface LogEntry {
 
 export type LogHandler = (entry: LogEntry) => void
 
-export class Logger {
+export interface LoggerInterface {
+  addHandler(handler: LogHandler): void
+  setMinLevel(level: LogLevel): void
+  enable(): void
+  disable(): void
+  isEnabled(): boolean
+  debug(message: string, metadata?: Record<string, unknown>): void
+  info(message: string, metadata?: Record<string, unknown>): void
+  warn(message: string, metadata?: Record<string, unknown>): void
+  error(message: string, metadata?: Record<string, unknown>): void
+}
+
+export function isLogger(value: unknown): value is LoggerInterface {
+  if (value == null || typeof value !== 'object') return false
+
+  const logger = value as LoggerInterface
+
+  return (
+    typeof logger.addHandler === 'function' &&
+    typeof logger.setMinLevel === 'function' &&
+    typeof logger.enable === 'function' &&
+    typeof logger.disable === 'function' &&
+    typeof logger.isEnabled === 'function' &&
+    typeof logger.debug === 'function' &&
+    typeof logger.info === 'function' &&
+    typeof logger.warn === 'function' &&
+    typeof logger.error === 'function'
+  )
+}
+
+export class Logger implements LoggerInterface {
   private handlers: LogHandler[] = []
   private context: string
   private minLevel: LogLevel
+  private enabled: boolean
 
-  constructor(context: string, minLevel: LogLevel = LogLevel.INFO) {
+  constructor(context: string, minLevel: LogLevel = LogLevel.INFO, enabled: boolean = false) {
     this.context = context
     this.minLevel = minLevel
+    this.enabled = enabled
+  }
+
+  enable() {
+    this.enabled = true
+  }
+
+  disable() {
+    this.enabled = false
+  }
+
+  isEnabled(): boolean {
+    return this.enabled
   }
 
   addHandler(handler: LogHandler) {
@@ -39,7 +83,7 @@ export class Logger {
   }
 
   private log(level: LogLevel, message: string, metadata?: Record<string, unknown>) {
-    if (!this.shouldLog(level)) return
+    if (!this.enabled || !this.shouldLog(level)) return
 
     const entry: LogEntry = {
       level,

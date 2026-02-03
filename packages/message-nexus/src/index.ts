@@ -3,13 +3,14 @@ import BroadcastDriver from './drivers/BroadcastDriver'
 import MittDriver from './drivers/MittDriver'
 import PostMessageDriver from './drivers/PostMessageDriver'
 import WebSocketDriver from './drivers/WebSocktDriver'
-import { Logger, createConsoleHandler } from './utils/logger'
+import { Logger, LoggerInterface, createConsoleHandler, isLogger } from './utils/logger'
 import { createEmitter } from './utils/emitter'
 
 interface MessageNexusOptions {
   instanceId?: string
   timeout?: number
-  logger?: Logger
+  logger?: LoggerInterface
+  loggerEnabled?: boolean
 }
 
 interface RequestOptions {
@@ -61,7 +62,7 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
   private messageQueue: Message[] = []
   private maxQueueSize: number = 100
   private errorHandler: ErrorHandler | null = null
-  private logger: Logger
+  private logger: LoggerInterface
   private metrics: Metrics = {
     messagesSent: 0,
     messagesReceived: 0,
@@ -77,19 +78,28 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
     this.driver = driver
     this.instanceId = options?.instanceId || crypto.randomUUID()
     this.timeout = options?.timeout ?? 10000
-    this.logger = options?.logger || new Logger('MessageNexus')
-    this.logger.addHandler(createConsoleHandler())
+
+    if (options?.logger && isLogger(options.logger)) {
+      this.logger = options.logger
+    } else {
+      this.logger = new Logger('MessageNexus')
+    }
+
+    const loggerEnabled = options?.loggerEnabled ?? false
+    if (loggerEnabled) {
+      this.logger.enable()
+      this.logger.addHandler(createConsoleHandler())
+      this.logger.info('MessageNexus initialized', {
+        instanceId: this.instanceId,
+        timeout: this.timeout,
+      })
+    }
     this.pendingTasks = new Map()
     this.incomingMessages = new Map()
     this.messageHandlers = new Set()
     this.cleanupInterval = null
 
     this.driver.onMessage = (data) => this._handleIncoming(data)
-
-    this.logger.info('MessageNexus initialized', {
-      instanceId: this.instanceId,
-      timeout: this.timeout,
-    })
 
     this.cleanupInterval = window.setInterval(() => {
       const now = Date.now()
@@ -350,4 +360,4 @@ export {
   WebSocketDriver,
   createEmitter,
 }
-export type { MessageNexusOptions, RequestOptions, Message }
+export type { MessageNexusOptions, RequestOptions, Message, LoggerInterface }
