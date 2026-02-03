@@ -1,6 +1,6 @@
 {
   "name": "message-bridge",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "A unified, type-safe, multi-protocol cross-context message communication library",
   "main": "./dist/index.js",
@@ -11,21 +11,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    },
-    "./drivers": {
-      "types": "./dist/drivers/index.d.ts",
-      "import": "./dist/drivers/index.js",
-      "require": "./dist/drivers/index.cjs"
-    },
-    "./utils": {
-      "types": "./dist/utils/index.d.ts",
-      "import": "./dist/utils/index.js",
-      "require": "./dist/utils/index.cjs"
     }
   },
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "scripts": {
     "build": "tsup",
@@ -41,7 +30,7 @@
     "postmessage",
     "websocket",
     "mitt",
-    "typescript"
+    "broadcast"
   ],
   "license": "MIT",
   "peerDependencies": {
