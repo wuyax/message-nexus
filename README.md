@@ -1,4 +1,4 @@
-# MessageBridge Monorepo
+# MessageNexus Monorepo
 
 一个统一、类型安全、支持多种传输协议的跨上下文消息通信库。
 
@@ -88,28 +88,28 @@ pnpm lint
 ### 使用示例
 
 ```typescript
-import { createEmitter, MittDriver, MessageBridge } from 'message-nexus'
+import { createEmitter, MittDriver, MessageNexus } from 'message-nexus'
 
 // 使用工厂函数创建独立的 emitter 实例
 const emitter = createEmitter()
 const driver = new MittDriver(emitter)
-const bridge = new MessageBridge(driver)
+const nexus = new MessageNexus(driver)
 
 // 发送请求
-const response = await bridge.request({
+const response = await nexus.request({
   type: 'GET_DATA',
   payload: { id: 123 },
 })
 
 // 监听命令
-const unsubscribe = bridge.onCommand((data) => {
+const unsubscribe = nexus.onCommand((data) => {
   if (data.type === 'GET_DATA') {
-    bridge.reply(data.id, { name: 'test', value: 42 })
+    nexus.reply(data.id, { name: 'test', value: 42 })
   }
 })
 
 // 清理资源（重要！）
-bridge.destroy()
+nexus.destroy()
 ```
 
 详细 API 文档请参考 [packages/message-nexus](./packages/message-nexus/README.md)。

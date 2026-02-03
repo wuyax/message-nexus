@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import MessageBridge from 'message-nexus'
+import MessageNexus from 'message-nexus'
 import { PostMessageDriver } from 'message-nexus'
 
 interface LogEntry {
@@ -11,7 +11,7 @@ interface LogEntry {
 }
 
 const iframeRef = ref<HTMLIFrameElement | null>(null)
-const bridgeRef = ref<MessageBridge | null>(null)
+const nexusRef = ref<MessageNexus | null>(null)
 const logs = ref<LogEntry[]>([])
 const isIframeReady = ref(false)
 const requestPayload = ref('{"message": "Hello from parent!"}')
@@ -29,7 +29,7 @@ function addLog(type: string, direction: 'sent' | 'received', payload: unknown) 
 }
 
 function sendRequest() {
-  if (!bridgeRef.value || !isIframeReady.value) {
+  if (!nexusRef.value || !isIframeReady.value) {
     console.warn('Iframe not ready')
     return
   }
@@ -38,7 +38,7 @@ function sendRequest() {
     const payload = JSON.parse(requestPayload.value)
     addLog('REQUEST', 'sent', payload)
 
-    bridgeRef.value
+    nexusRef.value
       .request({
         type: 'PING',
         payload,
@@ -57,7 +57,7 @@ function sendRequest() {
 }
 
 function sendCommand() {
-  if (!bridgeRef.value || !isIframeReady.value) {
+  if (!nexusRef.value || !isIframeReady.value) {
     console.warn('Iframe not ready')
     return
   }
@@ -65,7 +65,7 @@ function sendCommand() {
   try {
     const payload = JSON.parse(requestPayload.value)
     addLog('COMMAND', 'sent', payload)
-    bridgeRef.value.request({
+    nexusRef.value.request({
       type: 'COMMAND',
       payload,
       to: 'iframe-demo',
@@ -88,14 +88,14 @@ onMounted(() => {
   }
 
   const driver = new PostMessageDriver(iframeRef.value?.contentWindow || window, TARGET_ORIGIN)
-  const bridge = new MessageBridge(driver)
-  bridgeRef.value = bridge
+  const nexus = new MessageNexus(driver)
+  nexusRef.value = nexus
 
-  bridge.onCommand((data) => {
+  nexus.onCommand((data) => {
     addLog('COMMAND', 'received', data)
   })
 
-  bridge.onError((error) => {
+  nexus.onError((error) => {
     addLog('ERROR', 'received', { error: error.message })
   })
 
@@ -108,7 +108,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  bridgeRef.value?.destroy()
+  nexusRef.value?.destroy()
 })
 </script>
 

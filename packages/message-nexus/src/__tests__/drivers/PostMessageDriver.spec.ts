@@ -73,7 +73,7 @@ describe('PostMessageDriver', () => {
     expect(handler).toHaveBeenCalledWith({ id: 'test', type: 'test', from: 'sender' })
   })
 
-  it('should filter out non-MessageBridge messages', () => {
+  it('should filter out non-MessageNexus messages', () => {
     const handler = vi.fn()
     const mockWindow = {} as Window
 

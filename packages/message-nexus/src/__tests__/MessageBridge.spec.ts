@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import mitt from 'mitt'
-import MessageBridge from '../index'
+import MessageNexus from '../index'
 import MittDriver from '../drivers/MittDriver'
 
-describe('MessageBridge', () => {
-  let bridge: MessageBridge
+describe('MessageNexus', () => {
+  let bridge: MessageNexus
   let mockDriver: MittDriver
 
   beforeEach(() => {
     vi.useFakeTimers()
     const emitter = mitt() as any
     mockDriver = new MittDriver(emitter)
-    bridge = new MessageBridge(mockDriver)
+    bridge = new MessageNexus(mockDriver)
   })
 
   afterEach(() => {

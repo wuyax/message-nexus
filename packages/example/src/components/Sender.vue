@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { onUnmounted } from 'vue'
-import MessageBridge from 'message-nexus'
+import MessageNexus from 'message-nexus'
 import { MittDriver } from 'message-nexus'
 import { emitter } from '../assets/utils'
 
 const driver = new MittDriver(emitter)
-const bridge = new MessageBridge(driver)
+const nexus = new MessageNexus(driver)
 
 function send() {
-  bridge
+  nexus
     .request({
       type: 'anov.create',
       payload: { name: 'test' + Math.random() },
@@ -25,7 +25,7 @@ function send() {
 }
 
 onUnmounted(() => {
-  bridge.destroy()
+  nexus.destroy()
 })
 </script>
 

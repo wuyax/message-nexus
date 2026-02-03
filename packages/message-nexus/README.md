@@ -28,21 +28,24 @@ pnpm add message-nexus
 ### 1. 进程内通信（Mitt）
 
 ```typescript
-import mitt from 'mitt'
-import { MittDriver, MessageBridge } from 'message-nexus'
+import MessageNexus, { MittDriver, createEmitter } from 'message-nexus'
 
-const emitter = mitt()
+// 共享的 emitter
+const emitter = createEmitter()
+
 const driver = new MittDriver(emitter)
-const bridge = new MessageBridge(driver)
+const nexus = new MessageNexus(driver)
 
 // 发送请求
-const response = await bridge.request('GET_DATA', { id: 123 })
+const response = await nexus.request('GET_DATA', { id: 123 })
 console.log(response)
 
 // 监听命令
-const unsubscribe = bridge.onCommand((data) => {
+const receiverDriver = new MittDriver(emitter)
+const receiverNexus = new MessageNexus(receiverDriver)
+const unsubscribe = receiverNexus.onCommand((data) => {
   if (data.type === 'GET_DATA') {
-    bridge.reply(data.id, { name: 'test', value: 42 })
+    receiverNexus.reply(data.id, { name: 'test', value: 42 })
   }
 })
 ```
@@ -50,22 +53,22 @@ const unsubscribe = bridge.onCommand((data) => {
 ### 2. iframe/Window 通信（PostMessage）
 
 ```typescript
-import { PostMessageDriver, MessageBridge } from 'message-nexus'
+import MessageNexus, { PostMessageDriver } from 'message-nexus'
 
 // 发送方
 const driver = new PostMessageDriver(window.parent, 'https://example.com')
-const bridge = new MessageBridge(driver)
+const nexus = new MessageNexus(driver)
 
-const response = await bridge.request('PING')
+const response = await nexus.request('PING')
 console.log('Pong:', response)
 
 // 接收方
 const iframeDriver = new PostMessageDriver(iframe.contentWindow, 'https://example.com')
-const iframeBridge = new MessageBridge(iframeDriver)
+const iframeNexus = new MessageNexus(iframeDriver)
 
-iframeBridge.onCommand((data) => {
+iframeNexus.onCommand((data) => {
   if (data.type === 'PING') {
-    bridge.reply(data.id, { time: Date.now() })
+    iframeNexus.reply(data.id, { time: Date.now() })
   }
 })
 ```
@@ -73,32 +76,37 @@ iframeBridge.onCommand((data) => {
 ### 3. 跨标签页通信（BroadcastChannel）
 
 ```typescript
-import { BroadcastDriver, MessageBridge } from 'message-nexus'
+import MessageNexus, { BroadcastDriver } from 'message-nexus'
 
 // 创建 BroadcastDriver，指定频道名称
 const driver = new BroadcastDriver({ channel: 'my-app-channel' })
-const bridge = new MessageBridge(driver)
+const nexus = new MessageNexus(driver)
 
 // 监听命令
-bridge.onCommand((data) => {
+nexus.onCommand((data) => {
   console.log('Received:', data.type, data.payload)
-  bridge.reply(data.id, { result: 'success' })
+  nexus.reply(data.id, { result: 'success' })
 })
 
 // 发送请求（会在所有同频道的标签页中广播）
-const response = await bridge.request({
+const response = await nexus.request({
   type: 'SYNC_STATE',
   payload: { state: '...' },
 })
 
-// 清理资源
-bridge.destroy()
+// 接收方
+const receiverDriver = new BroadcastDriver({ channel: 'my-app-channel' })
+const receiverNexus = new MessageNexus(receiverDriver)
+receiverNexus.onCommand((data) => {
+  console.log('Received:', data.type, data.payload)
+  receiverNexus.reply(data.id, { result: 'success' })
+})
 ```
 
 ### 4. WebSocket 通信
 
 ```typescript
-import { WebSocketDriver, MessageBridge } from 'message-nexus'
+import MessageNexus, { WebSocketDriver } from 'message-nexus'
 
 // 自动重连配置
 const driver = new WebSocketDriver({
@@ -109,28 +117,42 @@ const driver = new WebSocketDriver({
   },
 })
 
-const bridge = new MessageBridge(driver)
+const nexus = new MessageNexus(driver)
 
 // 发送请求
-const response = await bridge.request({
+const response = await nexus.request({
   type: 'GET_USER',
   payload: { userId: 123 },
   timeout: 5000,
   retryCount: 3, // 失败重试 3 次
   retryDelay: 1000, // 重试延迟
 })
+
+// 接收方
+const receiverDriver = new WebSocketDriver({
+  url: 'wss://api.example.com/ws',
+  reconnect: {
+    maxRetries: 5, // 最大重试次数
+    retryInterval: 3000, // 重试间隔（毫秒）
+  },
+})
+const receiverNexus = new MessageNexus(receiverDriver)
+receiverNexus.onCommand((data) => {
+  console.log('Received:', data.type, data.payload)
+  receiverNexus.reply(data.id, { result: 'success' })
+})
 ```
 
 ## API 文档
 
-### MessageBridge
+### MessageNexus
 
 #### 构造函数
 
 ```typescript
-new MessageBridge<RequestPayload, ResponsePayload>(
+new MessageNexus<RequestPayload, ResponsePayload>(
   driver: BaseDriver,
-  options?: MessageBridgeOptions
+  options?: MessageNexusOptions
 )
 ```
 
@@ -149,7 +171,7 @@ new MessageBridge<RequestPayload, ResponsePayload>(
 发送请求并等待响应。
 
 ```typescript
-bridge.request(typeOrOptions: string | RequestOptions): Promise<ResponsePayload>
+nexus.request(typeOrOptions: string | RequestOptions): Promise<ResponsePayload>
 ```
 
 **Options:**
@@ -168,10 +190,10 @@ bridge.request(typeOrOptions: string | RequestOptions): Promise<ResponsePayload>
 
 ```typescript
 // 简单请求
-const result = await bridge.request('FETCH_DATA')
+const result = await nexus.request('FETCH_DATA')
 
 // 完整配置
-const result = await bridge.request({
+const result = await nexus.request({
   type: 'FETCH_DATA',
   payload: { id: 123 },
   to: 'target-instance',
@@ -186,7 +208,7 @@ const result = await bridge.request({
 注册消息处理器。
 
 ```typescript
-bridge.onCommand(handler: (data: CommandMessage) => void): () => void
+nexus.onCommand(handler: (data: CommandMessage) => void): () => void
 ```
 
 **返回值:** 取消监听的函数
@@ -194,11 +216,11 @@ bridge.onCommand(handler: (data: CommandMessage) => void): () => void
 **示例：**
 
 ```typescript
-const unsubscribe = bridge.onCommand((data) => {
+const unsubscribe = nexus.onCommand((data) => {
   console.log('Received:', data.type, data.payload)
 
   if (data.type === 'ECHO') {
-    bridge.reply(data.id, { echoed: data.payload })
+    nexus.reply(data.id, { echoed: data.payload })
   }
 })
 
@@ -211,14 +233,14 @@ unsubscribe()
 回复传入消息。
 
 ```typescript
-bridge.reply(messageId: string, payload: unknown, error?: unknown)
+nexus.reply(messageId: string, payload: unknown, error?: unknown)
 ```
 
 **示例：**
 
 ```typescript
-bridge.reply('message-id-123', { success: true })
-bridge.reply('message-id-456', null, new Error('Invalid request'))
+nexus.reply('message-id-123', { success: true })
+nexus.reply('message-id-456', null, new Error('Invalid request'))
 ```
 
 ##### onError()
@@ -226,13 +248,13 @@ bridge.reply('message-id-456', null, new Error('Invalid request'))
 注册错误处理器。
 
 ```typescript
-bridge.onError(handler: ErrorHandler): () => void
+nexus.onError(handler: ErrorHandler): () => void
 ```
 
 **示例：**
 
 ```typescript
-bridge.onError((error, context) => {
+nexus.onError((error, context) => {
   console.error('Bridge error:', error.message, context)
   // 发送到错误追踪服务
   Sentry.captureException(error, { extra: context })
@@ -244,7 +266,7 @@ bridge.onError((error, context) => {
 获取监控指标。
 
 ```typescript
-bridge.getMetrics(): Metrics
+nexus.getMetrics(): Metrics
 ```
 
 **返回值:**
@@ -264,7 +286,7 @@ bridge.getMetrics(): Metrics
 **示例：**
 
 ```typescript
-const metrics = bridge.getMetrics()
+const metrics = nexus.getMetrics()
 console.log(`Avg latency: ${metrics.averageLatency}ms`)
 console.log(
   `Success rate: ${((metrics.messagesReceived / metrics.messagesSent) * 100).toFixed(2)}%`,
@@ -276,13 +298,13 @@ console.log(
 注册指标变更回调。
 
 ```typescript
-bridge.onMetrics(callback: MetricsCallback): () => void
+nexus.onMetrics(callback: MetricsCallback): () => void
 ```
 
 **示例：**
 
 ```typescript
-const unsubscribe = bridge.onMetrics((metrics) => {
+const unsubscribe = nexus.onMetrics((metrics) => {
   // 发送到监控系统
   metricsService.report(metrics)
 })
@@ -293,7 +315,7 @@ const unsubscribe = bridge.onMetrics((metrics) => {
 刷新消息队列，发送所有缓存的消息。
 
 ```typescript
-bridge.flushQueue()
+nexus.flushQueue()
 ```
 
 ##### destroy()
@@ -301,7 +323,7 @@ bridge.flushQueue()
 销毁实例，清理资源。
 
 ```typescript
-bridge.destroy()
+nexus.destroy()
 ```
 
 **注意**: `destroy()` 方法会自动调用驱动的 `destroy()` 方法来清理事件监听器等资源。建议在组件卸载时调用此方法以避免内存泄漏。
@@ -409,25 +431,25 @@ new BroadcastDriver(options: BroadcastDriverOptions)
 **示例：**
 
 ```typescript
-import { BroadcastDriver, MessageBridge } from 'message-nexus'
+import { BroadcastDriver, MessageNexus } from 'message-nexus'
 
 const driver = new BroadcastDriver({ channel: 'my-app-channel' })
-const bridge = new MessageBridge(driver)
+const nexus = new MessageNexus(driver)
 
 // 监听来自其他标签页的消息
-bridge.onCommand((data) => {
+nexus.onCommand((data) => {
   console.log('Received from another tab:', data)
-  bridge.reply(data.id, { received: true })
+  nexus.reply(data.id, { received: true })
 })
 
 // 清理资源
-bridge.destroy()
+nexus.destroy()
 ```
 
 **特性：**
 
 - 同一源下的多个标签页可以通过相同频道名进行通信
-- 自动添加协议标识符，过滤非 MessageBridge 消息
+- 自动添加协议标识符，过滤非 MessageNexus 消息
 - 支持动态切换频道
 
 ## Logger 日志
@@ -471,14 +493,14 @@ logger.setMinLevel(LogLevel.WARN) // 只输出 WARN 和 ERROR
 import { Logger } from 'message-nexus/utils/logger'
 
 const logger = new Logger('MyBridge')
-const bridge = new MessageBridge(driver, { logger })
+const nexus = new MessageNexus(driver, { logger })
 ```
 
 ## 设计亮点
 
 ### 1. 类型安全
 
-MessageBridge 使用 TypeScript 泛型提供完整的类型推断：
+MessageNexus 使用 TypeScript 泛型提供完整的类型推断：
 
 ```typescript
 interface UserRequest {
@@ -490,10 +512,10 @@ interface UserResponse {
   name: string
 }
 
-const bridge = new MessageBridge<UserRequest, UserResponse>(driver)
+const nexus = new MessageNexus<UserRequest, UserResponse>(driver)
 
 // 完整的类型推断
-const response = await bridge.request({
+const response = await nexus.request({
   type: 'GET_USER',
   payload: { userId: 123 }, // 类型: UserRequest
 })
@@ -521,7 +543,7 @@ console.log(response.name)
 ### 4. 安全加固
 
 - **PostMessage**: 禁止使用 `'*'` 作为 targetOrigin，必须明确指定源地址
-- **BroadcastChannel**: 使用协议标识符 `__messageBridge` 区分 MessageBridge 消息和用户自定义消息
+- **BroadcastChannel**: 使用协议标识符 `__messageBridge` 区分 MessageNexus 消息和用户自定义消息
 - **消息验证**: 运行时验证消息格式，防止非法消息导致崩溃
 - **来源过滤**: 自动过滤非目标消息
 
@@ -530,7 +552,7 @@ console.log(response.name)
 内置监控指标，便于生产环境监控：
 
 ```typescript
-const metrics = bridge.getMetrics()
+const metrics = nexus.getMetrics()
 
 console.log(`Messages: ${metrics.messagesSent} sent, ${metrics.messagesReceived} received`)
 console.log(

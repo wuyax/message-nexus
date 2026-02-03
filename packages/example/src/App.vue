@@ -7,7 +7,7 @@ import { RouterLink, RouterView } from 'vue-router'
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>MessageBridge</h1>
+          <h1>MessageNexus</h1>
           <span class="subtitle">Examples</span>
         </div>
         <nav class="nav-menu">

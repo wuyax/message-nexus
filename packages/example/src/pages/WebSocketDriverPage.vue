@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import MessageBridge from 'message-nexus'
+import MessageNexus from 'message-nexus'
 import { WebSocketDriver } from 'message-nexus'
 
 interface LogEntry {
@@ -19,7 +19,7 @@ interface Metrics {
   averageLatency: number
 }
 
-const bridgeRef = ref<MessageBridge | null>(null)
+const nexusRef = ref<MessageNexus | null>(null)
 const driverRef = ref<WebSocketDriver | null>(null)
 const logs = ref<LogEntry[]>([])
 const metrics = ref<Metrics>({
@@ -48,8 +48,8 @@ function addLog(type: string, direction: 'sent' | 'received', payload: unknown) 
 }
 
 function updateMetrics() {
-  if (bridgeRef.value) {
-    const m = bridgeRef.value.getMetrics()
+  if (nexusRef.value) {
+    const m = nexusRef.value.getMetrics()
     metrics.value = {
       messagesSent: m.messagesSent,
       messagesReceived: m.messagesReceived,
@@ -74,21 +74,21 @@ function connect() {
     })
 
     driverRef.value = driver
-    const bridge = new MessageBridge(driver)
-    bridgeRef.value = bridge
+    const nexus = new MessageNexus(driver)
+    nexusRef.value = nexus
 
-    bridge.onCommand((data) => {
+    nexus.onCommand((data) => {
       addLog(data.type, 'received', data)
       updateMetrics()
-      bridge.reply(data.id, { message: `${data.type} processed` })
+      nexus.reply(data.id, { message: `${data.type} processed` })
     })
 
-    bridge.onError((error) => {
+    nexus.onError((error) => {
       addLog('ERROR', 'received', { error: error.message })
       updateMetrics()
     })
 
-    bridge.onMetrics(() => {
+    nexus.onMetrics(() => {
       updateMetrics()
     })
 
@@ -105,9 +105,9 @@ function connect() {
 }
 
 function disconnect() {
-  if (bridgeRef.value) {
-    bridgeRef.value.destroy()
-    bridgeRef.value = null
+  if (nexusRef.value) {
+    nexusRef.value.destroy()
+    nexusRef.value = null
   }
   driverRef.value = null
   isConnected.value = false
@@ -116,7 +116,7 @@ function disconnect() {
 }
 
 function sendRequest() {
-  if (!bridgeRef.value) {
+  if (!nexusRef.value) {
     console.warn('Not connected')
     return
   }
@@ -125,7 +125,7 @@ function sendRequest() {
     const payload = JSON.parse(requestPayload.value)
     addLog('REQUEST', 'sent', payload)
 
-    bridgeRef.value
+    nexusRef.value
       .request({
         type: 'PING',
         payload,
@@ -145,11 +145,11 @@ function sendRequest() {
 }
 
 function sendGetTime() {
-  if (!bridgeRef.value) return
+  if (!nexusRef.value) return
 
   addLog('REQUEST', 'sent', { type: 'GET_TIME' })
 
-  bridgeRef.value
+  nexusRef.value
     .request({ type: 'GET_TIME' })
     .then((res) => {
       addLog('RESPONSE', 'received', res)
@@ -162,12 +162,12 @@ function sendGetTime() {
 }
 
 function sendEcho() {
-  if (!bridgeRef.value) return
+  if (!nexusRef.value) return
 
   const payload = { message: 'Hello Echo!', timestamp: Date.now() }
   addLog('REQUEST', 'sent', { type: 'ECHO', payload })
 
-  bridgeRef.value
+  nexusRef.value
     .request({
       type: 'ECHO',
       payload,
@@ -183,11 +183,11 @@ function sendEcho() {
 }
 
 function sendGetData() {
-  if (!bridgeRef.value) return
+  if (!nexusRef.value) return
 
   addLog('REQUEST', 'sent', { type: 'GET_DATA' })
 
-  bridgeRef.value
+  nexusRef.value
     .request({ type: 'GET_DATA' })
     .then((res) => {
       addLog('RESPONSE', 'received', res)

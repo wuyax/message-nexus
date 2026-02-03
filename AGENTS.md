@@ -1,6 +1,6 @@
-# AGENTS.md - MessageBridge Development Guide
+# AGENTS.md - MessageNexus Development Guide
 
-This file provides guidelines for AI agents working on the MessageBridge codebase.
+This file provides guidelines for AI agents working on the MessageNexus codebase.
 
 ## Build, Lint, and Test Commands
 
@@ -40,7 +40,7 @@ pnpm clean
 Run a single test file:
 
 ```bash
-cd packages/message-nexus && pnpm test:run -- src/__tests__/MessageBridge.spec.ts
+cd packages/message-nexus && pnpm test:run -- src/__tests__/drivers/BroadcastDriver.spec.ts
 ```
 
 Run a specific test within a file:
@@ -62,7 +62,7 @@ cd packages/message-nexus && pnpm test:run -- -t "should timeout after specified
 
 ```typescript
 // Default export for main classes
-export default class MessageBridge { }
+export default class MessageNexus { }
 
 // Named exports for types and utilities
 export interface CommandMessage { }
@@ -70,15 +70,15 @@ export type ErrorHandler = ...
 
 // Group related exports
 export { BaseDriver, MittDriver, PostMessageDriver, WebSocketDriver, emitter }
-export type { MessageBridgeOptions, RequestOptions, Message }
+export type { MessageNexusOptions, RequestOptions, Message }
 ```
 
 ### Naming Conventions
 
 | Pattern         | Convention               | Example                       |
 | --------------- | ------------------------ | ----------------------------- |
-| Classes         | PascalCase               | `MessageBridge`, `BaseDriver` |
-| Interfaces      | PascalCase               | `MessageBridgeOptions`        |
+| Classes         | PascalCase               | `MessageNexus`, `BaseDriver` |
+| Interfaces      | PascalCase               | `MessageNexusOptions`        |
 | Types           | PascalCase               | `ErrorHandler`                |
 | Enums           | PascalCase               | `LogLevel`                    |
 | Private members | camelCase with `private` | `private cleanupInterval`     |
@@ -108,7 +108,7 @@ try {
 
 // Use optional chaining and nullish coalescing
 this.timeout = options?.timeout ?? 10000
-this.logger = options?.logger || new Logger('MessageBridge')
+this.logger = options?.logger || new Logger('MessageNexus')
 ```
 
 ### Type Safety
@@ -148,8 +148,8 @@ export default class ExampleClass {
 ```typescript
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-describe('MessageBridge', () => {
-  let bridge: MessageBridge
+describe('MessageNexus', () => {
+  let nexus: MessageNexus
 
   beforeEach(() => {
     vi.useFakeTimers()
@@ -157,7 +157,7 @@ describe('MessageBridge', () => {
   })
 
   afterEach(() => {
-    bridge.destroy()
+    nexus.destroy()
     vi.restoreAllMocks()
   })
 

@@ -2,20 +2,20 @@
 import { ref, onUnmounted } from 'vue'
 import Sender from '../components/Sender.vue'
 import { MittDriver } from 'message-nexus'
-import MessageBridge from 'message-nexus'
+import MessageNexus from 'message-nexus'
 import { emitter } from '../assets/utils'
 
 const driver = new MittDriver(emitter)
-const bridge = new MessageBridge(driver, { instanceId: 'myBridgeId' })
+const nexus = new MessageNexus(driver, { instanceId: 'myBridgeId' })
 let messageId = ref<string[]>([])
-bridge.onCommand((data) => {
+nexus.onCommand((data) => {
   console.log(data)
   messageId.value.push(data.id)
 })
 
 function send(id: string) {
   try {
-    bridge.reply(id, { result: 'success' })
+    nexus.reply(id, { result: 'success' })
     messageId.value = messageId.value.filter((item) => item !== id)
   } catch (error) {
     console.log(error)
@@ -23,7 +23,7 @@ function send(id: string) {
 }
 
 onUnmounted(() => {
-  bridge.destroy()
+  nexus.destroy()
 })
 </script>
 

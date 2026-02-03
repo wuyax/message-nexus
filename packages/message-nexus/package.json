@@ -1,6 +1,6 @@
 {
   "name": "message-nexus",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "A unified, type-safe, multi-protocol cross-context message communication library",
   "main": "./dist/index.js",

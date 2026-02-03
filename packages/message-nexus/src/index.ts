@@ -6,7 +6,7 @@ import WebSocketDriver from './drivers/WebSocktDriver'
 import { Logger, createConsoleHandler } from './utils/logger'
 import { createEmitter } from './utils/emitter'
 
-interface MessageBridgeOptions {
+interface MessageNexusOptions {
   instanceId?: string
   timeout?: number
   logger?: Logger
@@ -41,7 +41,7 @@ export interface Metrics {
 
 export type MetricsCallback = (metrics: Metrics) => void
 
-export default class MessageBridge<RequestPayload = unknown, ResponsePayload = unknown> {
+export default class MessageNexus<RequestPayload = unknown, ResponsePayload = unknown> {
   driver: BaseDriver
   pendingTasks: Map<
     string,
@@ -73,11 +73,11 @@ export default class MessageBridge<RequestPayload = unknown, ResponsePayload = u
   }
   private metricsCallbacks: Set<MetricsCallback> = new Set()
 
-  constructor(driver: BaseDriver, options?: MessageBridgeOptions) {
+  constructor(driver: BaseDriver, options?: MessageNexusOptions) {
     this.driver = driver
     this.instanceId = options?.instanceId || crypto.randomUUID()
     this.timeout = options?.timeout ?? 10000
-    this.logger = options?.logger || new Logger('MessageBridge')
+    this.logger = options?.logger || new Logger('MessageNexus')
     this.logger.addHandler(createConsoleHandler())
     this.pendingTasks = new Map()
     this.incomingMessages = new Map()
@@ -86,7 +86,7 @@ export default class MessageBridge<RequestPayload = unknown, ResponsePayload = u
 
     this.driver.onMessage = (data) => this._handleIncoming(data)
 
-    this.logger.info('MessageBridge initialized', {
+    this.logger.info('MessageNexus initialized', {
       instanceId: this.instanceId,
       timeout: this.timeout,
     })
@@ -321,7 +321,7 @@ export default class MessageBridge<RequestPayload = unknown, ResponsePayload = u
   }
 
   destroy() {
-    this.logger.info('MessageBridge destroying', {
+    this.logger.info('MessageNexus destroying', {
       instanceId: this.instanceId,
       pendingMessages: this.pendingTasks.size,
       queuedMessages: this.messageQueue.length,
@@ -350,4 +350,4 @@ export {
   WebSocketDriver,
   createEmitter,
 }
-export type { MessageBridgeOptions, RequestOptions, Message }
+export type { MessageNexusOptions, RequestOptions, Message }

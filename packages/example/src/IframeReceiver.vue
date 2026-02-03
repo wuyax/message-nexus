@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import MessageBridge from 'message-nexus'
+import MessageNexus from 'message-nexus'
 import { PostMessageDriver } from 'message-nexus'
 
 const TARGET_ORIGIN = window.location.origin
 
 // Create driver for communicating with parent window
 const driver = new PostMessageDriver(window.parent, TARGET_ORIGIN)
-const bridge = new MessageBridge(driver, { instanceId: 'iframe-demo' })
+const nexus = new MessageNexus(driver, { instanceId: 'iframe-demo' })
 
 interface LogEntry {
   time: string
@@ -26,15 +26,15 @@ function addLog(type: string, payload: unknown) {
 }
 
 // Listen for commands from parent
-bridge.onCommand((data) => {
+nexus.onCommand((data) => {
   addLog('COMMAND', data)
 
   // Reply with success
-  bridge.reply(data.id, { received: true, echo: data.payload ?? data })
+  nexus.reply(data.id, { received: true, echo: data.payload ?? data })
 })
 
 // Listen for errors
-bridge.onError((error: { message: string }) => {
+nexus.onError((error: { message: string }) => {
   addLog('ERROR', { error: error.message })
 })
 
