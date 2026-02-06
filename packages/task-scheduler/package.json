@@ -1,0 +1,37 @@
+{
+  "name": "task-scheduler",
+  "version": "1.0.0",
+  "description": "A powerful task scheduler for Three.js 3D scenes with performance optimization and debugging features",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "test": "ts-node test.ts",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"**/*.ts\""
+  },
+  "keywords": [
+    "task-scheduler",
+    "performance",
+    "scheduling",
+    "queue",
+    "async"
+  ],
+  "author": "wuyax",
+  "license": "MIT",
+  "peerDependencies": {
+    "three": "^0.150.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/three": "^0.150.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "ts-node": "^10.9.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

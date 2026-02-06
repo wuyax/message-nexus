@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "pnpm --filter @message-bridge/example dev",
     "dev:ws": "pnpm --filter @message-bridge/server start",
-    "build": "pnpm --filter message-nexus build && pnpm --filter @message-bridge/example build",
-    "build:core": "pnpm --filter message-nexus build",
+    "build": "pnpm --filter @message-bridge/example build",
+    "build:deps": "pnpm --filter message-nexus build && pnpm --filter task-scheduler build",
     "build:example": "pnpm --filter @message-bridge/example build",
     "test": "pnpm --filter message-nexus test",
     "test:run": "pnpm --filter message-nexus test:run",
