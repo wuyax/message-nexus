@@ -668,8 +668,13 @@ onUnmounted(() => {
   color: white;
 }
 
-.log-type.get-data {
+.log-type.get_data {
   background: #4ec9b0;
+  color: #1e1e1e;
+}
+
+.log-type.get_time {
+  background: #eb3838;
   color: #1e1e1e;
 }
 
