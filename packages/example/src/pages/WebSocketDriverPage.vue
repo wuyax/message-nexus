@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import MessageNexus from 'message-nexus'
 import { WebSocketDriver } from 'message-nexus'
+import { useAutoScroll } from '../composables/useAutoScroll'
 
 interface LogEntry {
   time: string
@@ -37,6 +38,9 @@ const requestPayload = ref('{"message": "Hello from client!"}')
 const responseData = ref<unknown>(null)
 const connectionStatus = ref('disconnected')
 const reconnectEnabled = ref(true)
+const logListRef = ref<HTMLElement | null>(null)
+
+useAutoScroll(logListRef, logs)
 
 function addLog(type: string, direction: 'sent' | 'received', payload: unknown) {
   logs.value.push({
@@ -297,7 +301,7 @@ onUnmounted(() => {
           <span>Communication Log</span>
           <button class="btn small secondary" @click="clearLogs">Clear</button>
         </div>
-        <div class="log-list">
+        <div ref="logListRef" class="log-list">
           <div v-if="logs.length === 0" class="empty-state">
             No messages yet. Try sending a request.
           </div>

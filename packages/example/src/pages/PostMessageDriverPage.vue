@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import MessageNexus from 'message-nexus'
 import { PostMessageDriver } from 'message-nexus'
+import { useAutoScroll } from '../composables/useAutoScroll'
 
 interface LogEntry {
   time: string
@@ -16,6 +17,9 @@ const logs = ref<LogEntry[]>([])
 const isIframeReady = ref(false)
 const requestPayload = ref('{"message": "Hello from parent!"}')
 const responseData = ref<unknown>(null)
+const logListRef = ref<HTMLElement | null>(null)
+
+useAutoScroll(logListRef, logs)
 
 const TARGET_ORIGIN = window.location.origin
 
@@ -158,7 +162,7 @@ onUnmounted(() => {
           <span v-if="!isIframeReady" class="status-badge warning">Waiting for iframe...</span>
           <span v-else class="status-badge ready">Connected</span>
         </div>
-        <div class="log-list">
+        <div ref="logListRef" class="log-list">
           <div v-if="logs.length === 0" class="empty-state">
             No messages yet. Try sending a request or command.
           </div>

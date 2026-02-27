@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import MessageNexus from 'message-nexus'
 import { BroadcastDriver } from 'message-nexus'
+import { useAutoScroll } from '../composables/useAutoScroll'
 
 interface LogEntry {
   time: string
@@ -17,6 +18,9 @@ const responseData = ref<unknown>(null)
 const channelName = ref('message-nexus-demo')
 const isConnected = ref(false)
 const autoConnect = ref(false)
+const logListRef = ref<HTMLElement | null>(null)
+
+useAutoScroll(logListRef, logs)
 
 function addLog(type: string, direction: 'sent' | 'received', payload: unknown) {
   logs.value.push({
@@ -165,7 +169,7 @@ onUnmounted(() => {
         <div class="log-header">
           <span>Communication Log</span>
         </div>
-        <div class="log-list">
+        <div ref="logListRef" class="log-list">
           <div v-if="logs.length === 0" class="empty-state">
             No messages yet. Open this page in multiple tabs and try sending messages.
           </div>

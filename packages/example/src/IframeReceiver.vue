@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import MessageNexus from 'message-nexus'
 import { PostMessageDriver } from 'message-nexus'
+import { useAutoScroll } from './composables/useAutoScroll'
 
 const TARGET_ORIGIN = window.location.origin
 
@@ -16,6 +17,9 @@ interface LogEntry {
 }
 
 const logs = ref<LogEntry[]>([])
+const logListRef = ref<HTMLElement | null>(null)
+
+useAutoScroll(logListRef, logs)
 
 function addLog(type: string, payload: unknown) {
   logs.value.push({
@@ -56,7 +60,7 @@ onMounted(() => {
 
       <div class="log-section">
         <div class="log-header">Received Messages</div>
-        <div class="log-list">
+        <div ref="logListRef" class="log-list">
           <div v-if="logs.length === 0" class="empty-state">
             Waiting for messages from parent...
           </div>
