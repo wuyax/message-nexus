@@ -1,4 +1,4 @@
-# @message-bridge/server
+# @message-nexus/server
 
 一个用于测试 `message-nexus` WebSocket 驱动的简单 Node.js WebSocket 服务端。
 

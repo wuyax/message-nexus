@@ -1,5 +1,5 @@
 {
-  "name": "@message-bridge/server",
+  "name": "@message-nexus/server",
   "version": "1.0.0",
   "private": true,
   "description": "Node.js servers for testing message-nexus",

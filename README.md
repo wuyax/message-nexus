@@ -141,7 +141,7 @@ pnpm dev
 pnpm --filter message-nexus <command>
 
 # 在 example 包中运行命令
-pnpm --filter @message-bridge/example <command>
+pnpm --filter @message-nexus/example <command>
 
 # 在所有包中运行命令
 pnpm --filter ./packages/** <command>

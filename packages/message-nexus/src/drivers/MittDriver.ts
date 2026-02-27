@@ -1,7 +1,7 @@
 import type { Emitter } from 'mitt'
 import BaseDriver, { type Message } from './BaseDriver'
 
-const eventIndicator = 'message_bridge_message_event'
+const eventIndicator = 'message_nexus_message_event'
 
 export default class MittDriver extends BaseDriver {
   private emitter: Emitter<Record<string, Message>>
