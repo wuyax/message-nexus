@@ -1,221 +1,229 @@
-# Three.js 任务调度器 (Task Scheduler)
+# Three.js Task Scheduler
 
-一个高性能、工业级的 TypeScript 任务调度器，专为 Three.js 3D 场景及复杂异步工作流设计。它通过智能调度算法，在保证 UI 60FPS 流畅度的前提下，实现了复杂任务依赖的高效管理。
+A high-performance, industrial-grade TypeScript task scheduler designed specifically for Three.js 3D scenes and complex asynchronous workflows. It manages complex task dependencies efficiently through intelligent scheduling algorithms while maintaining a smooth UI at 60 FPS.
 
-## 1. 系统架构图
+## 1. System Architecture
 
-本项目支持通过多种通信渠道（WebSocket、Iframe postMessage、BroadcastChannel 等）驱动 3D 场景更新。架构如下：
+This project supports driving 3D scene updates through various communication channels (WebSocket, Iframe postMessage, BroadcastChannel, etc.). The architecture is as follows:
 
 ```mermaid
 graph TD
-    subgraph "消息源层 (External Message Sources)"
+    subgraph "External Message Sources"
         WS[WebSocket / Server]
         PM[Iframe / postMessage]
         BC[BroadcastChannel / Tabs]
         MITT[Internal EventBus / Mitt]
     end
 
-    subgraph "协议解析层 (Message Bridge)"
+    subgraph "Message Bridge (Protocol Parsing)"
         MH[MessageHandler]
     end
 
-    subgraph "核心调度层 (Scheduling Engine)"
+    subgraph "Scheduling Engine"
         TS[TaskScheduler]
     end
 
-    subgraph "执行实现层 (Service Layer)"
+    subgraph "Service Layer"
         TSV[ThreeServer / Capability Provider]
     end
 
-    subgraph "渲染输出层 (Output)"
+    subgraph "Output"
         SCENE[Three.js Scene / WebGL]
     end
 
-    %% 数据流
+    %% Data Flow
     WS --> MH
     PM --> MH
     BC --> MH
     MITT --> MH
-    
+
     MH -- "addTask()" --> TS
     TS -- "dispatch to" --> TSV
     TSV -- "apply changes" --> SCENE
-    
-    %% 回传流
+
+    %% Return Flow
     TS -- "TaskEvent.COMPLETED" --> MH
     MH -- "Response Message" --> WS
 ```
 
-## 2. 核心特性 (v2.0 优化版)
+## 2. Core Features (v2.0 Optimized)
 
-✅ **智能调度算法**
-- **DAG 依赖管理**：基于有向无环图的事件驱动触发，彻底告别忙轮询。
-- **优先级继承**：自动提升依赖链优先级，解决“优先级反转”死锁。
-- **环境感知调度**：自适应浏览器 `RAF` 与后台/Node.js `setTimeout`。
+✅ **Intelligent Scheduling Algorithm**
 
-✅ **任务控制与容错**
-- **指数退避重试**：重试延迟随次数呈指数增长，保护系统负载。
-- **协作式调度支持**：提供 `context.shouldYield()`，长任务可平滑分片。
-- **资源自动清理**：内置垃圾回收机制，根据 `retentionPeriod` 自动清理历史任务状态，防止内存泄漏。
+- **DAG Dependency Management**: Event-driven triggering based on Directed Acyclic Graphs, eliminating busy-polling.
+- **Priority Inheritance**: Automatically elevates dependency chain priority to resolve "priority inversion" deadlocks.
+- **Environment-Aware Scheduling**: Adaptive to browser `RAF` and background/Node.js `setTimeout`.
 
-## 3. 高效集成指南：ThreeServer + TaskScheduler
+✅ **Task Control and Fault Tolerance**
 
-如果你有一个包含大量绘图和模型处理方法的 `ThreeServer` 类，建议采用 **“命令分发模式”** 进行集成。
+- **Exponential Backoff Retry**: Retry delays increase exponentially with each attempt, protecting system load.
+- **Cooperative Scheduling Support**: Provides `context.shouldYield()`, allowing long tasks to be smoothly fragmented.
+- **Automatic Resource Cleanup**: Built-in garbage collection mechanism that automatically cleans up historical task states based on `retentionPeriod`, preventing memory leaks.
 
-### 3.1 改造服务类方法
-使 `ThreeServer` 的方法感知调度上下文，以实现真正的异步分片执行。
+## 3. Efficient Integration Guide: ThreeServer + TaskScheduler
+
+If you have a `ThreeServer` class containing many drawing and model processing methods, it is recommended to use the **"Command Dispatch Pattern"** for integration.
+
+### 3.1 Modifying Service Class Methods
+
+Make `ThreeServer` methods aware of the scheduling context to achieve true asynchronous fragmented execution.
 
 ```typescript
 class ThreeServer {
-  // 示例：批量绘制复杂点位
+  // Example: Batch drawing complex points
   async drawComplexPoints(data: any, context: TaskContext) {
-    const { points } = data;
+    const { points } = data
     for (let i = 0; i < points.length; i++) {
-      // 1. 响应中止信号
-      if (context.signal.aborted) return;
+      // 1. Respond to abort signal
+      if (context.signal.aborted) return
 
-      // 2. 执行图形操作
-      this.addPointToScene(points[i]);
+      // 2. Execute graphics operations
+      this.addPointToScene(points[i])
 
-      // 3. 高效结合点：每处理 100 个元素检查是否需要让出主线程
+      // 3. Efficient integration point: Check every 100 elements if the main thread needs to be yielded
       if (i % 100 === 0 && context.shouldYield()) {
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 0))
       }
-      
-      context.reportProgress((i / points.length) * 100);
+
+      context.reportProgress((i / points.length) * 100)
     }
   }
 }
 ```
 
-### 3.2 注入调度器能力
-在应用初始化时，将 `ThreeServer` 实例的方法注册为调度器的执行器。
+### 3.2 Injecting Scheduler Capabilities
+
+At application initialization, register the `ThreeServer` instance methods as executors for the scheduler.
 
 ```typescript
-const threeServer = new ThreeServer(scene);
-const scheduler = new TaskScheduler();
+const threeServer = new ThreeServer(scene)
+const scheduler = new TaskScheduler()
 
-// 建立映射关系
-scheduler.registerExecutor(TaskType.DRAW_POINTS, (data, context) => 
-  threeServer.drawComplexPoints(data, context)
-);
+// Establish mapping relationships
+scheduler.registerExecutor(TaskType.DRAW_POINTS, (data, context) =>
+  threeServer.drawComplexPoints(data, context),
+)
 
-scheduler.registerExecutor(TaskType.LOAD_MODEL, (data, context) => 
-  threeServer.loadModel(data, context)
-);
+scheduler.registerExecutor(TaskType.LOAD_MODEL, (data, context) =>
+  threeServer.loadModel(data, context),
+)
 
-scheduler.start();
+scheduler.start()
 ```
 
-### 3.3 结合多渠道通信
-利用协议解析层将外部消息转化为调度任务。
+### 3.3 Combining Multi-Channel Communication
+
+Utilize the protocol parsing layer to convert external messages into scheduled tasks.
 
 ```typescript
-// 以 WebSocket 为例
+// Taking WebSocket as an example
 socket.onmessage = (event) => {
-  const msg = JSON.parse(event.data);
-  
-  // 转化为调度器任务
+  const msg = JSON.parse(event.data)
+
+  // Convert to scheduler task
   scheduler.addTask({
     id: msg.id,
-    type: msg.commandType, // 如 TaskType.DRAW_POINTS
+    type: msg.commandType, // e.g., TaskType.DRAW_POINTS
     data: msg.payload,
-    priority: msg.priority || TaskPriority.NORMAL
-  });
-};
+    priority: msg.priority || TaskPriority.NORMAL,
+  })
+}
 ```
 
-## 4. 快速开始
+## 4. Quick Start
 
-### 4.1 基础配置
+### 4.1 Basic Configuration
 
 ```typescript
-import { TaskScheduler } from './TaskScheduler';
-import { TaskType, TaskPriority, TaskRetryStrategy } from './types';
+import { TaskScheduler } from './TaskScheduler'
+import { TaskType, TaskPriority, TaskRetryStrategy } from './types'
 
 const scheduler = new TaskScheduler({
-  maxTasksPerFrame: 5,      // 每帧最多启动 5 个新任务
-  frameTimeBudget: 6,       // 每帧分配给 JS 执行的预算为 6ms (预留空间给渲染)
-  maxConcurrentTasks: 3,    // 最大并发异步任务数
-  retentionPeriod: 60000,   // 完成的任务状态保留 60 秒后自动清理
-});
+  maxTasksPerFrame: 5, // Start up to 5 new tasks per frame
+  frameTimeBudget: 6, // 6ms budget allocated for JS execution per frame (reserving space for rendering)
+  maxConcurrentTasks: 3, // Maximum number of concurrent asynchronous tasks
+  retentionPeriod: 60000, // Completed task state retained for 60 seconds before auto-cleanup
+})
 
-scheduler.start();
+scheduler.start()
 ```
 
-### 2. 定义具有协作能力的任务
+### 4.2 Defining Cooperative Tasks
 
 ```typescript
 scheduler.registerExecutor(TaskType.COMPUTE, async (data, context) => {
   for (let i = 0; i < data.items.length; i++) {
-    // 1. 检查中止信号
-    if (context.signal.aborted) throw new Error('Cancelled');
-    
-    // 2. 协作式调度：如果当前帧时间已用完，建议主动让出
+    // 1. Check abort signal
+    if (context.signal.aborted) throw new Error('Cancelled')
+
+    // 2. Cooperative scheduling: If the current frame budget is exhausted, proactively yield
     if (context.shouldYield()) {
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0))
     }
 
-    processItem(data.items[i]);
-    context.reportProgress((i / data.items.length) * 100);
+    processItem(data.items[i])
+    context.reportProgress((i / data.items.length) * 100)
   }
-});
+})
 ```
 
-### 3. 使用高级重试与依赖
+### 4.3 Using Advanced Retries and Dependencies
 
 ```typescript
 const taskId = scheduler.addTask({
   type: TaskType.LOAD_MODEL,
   priority: TaskPriority.NORMAL,
   retryCount: 3,
-  retryStrategy: TaskRetryStrategy.EXPONENTIAL, // 指数退避重试
-  dependencies: ['pre-config-task'],           // 只有等 pre-config-task 完成后才触发
-  data: { url: '/models/scene.glb' }
-});
+  retryStrategy: TaskRetryStrategy.EXPONENTIAL, // Exponential backoff retry
+  dependencies: ['pre-config-task'], // Only triggered after pre-config-task is completed
+  data: { url: '/models/scene.glb' },
+})
 ```
 
-## API 参考
+## API Reference
 
-### SchedulerConfig (配置项)
+### SchedulerConfig (Configuration)
 
-| 参数 | 类型 | 默认值 | 说明 |
-| :--- | :--- | :--- | :--- |
-| `maxTasksPerFrame` | `number` | `5` | 每帧允许从队列启动的最大任务数 |
-| `frameTimeBudget` | `number` | `6` | 每帧分配的执行时间预算 (ms) |
-| `maxConcurrentTasks` | `number` | `3` | 允许同时处于 RUNNING 状态的任务上限 |
-| `retentionPeriod` | `number` | `60000` | 任务完成后状态保留时长 (ms) |
-| `queueSizeLimit` | `number` | `1000` | 任务池最大容量 |
+| Parameter            | Type     | Default Value | Description                                               |
+| :------------------- | :------- | :------------ | :-------------------------------------------------------- |
+| `maxTasksPerFrame`   | `number` | `5`           | Maximum tasks allowed to start from the queue per frame   |
+| `frameTimeBudget`    | `number` | `6`           | Execution time budget per frame (ms)                      |
+| `maxConcurrentTasks` | `number` | `3`           | Upper limit for tasks simultaneously in the RUNNING state |
+| `retentionPeriod`    | `number` | `60000`       | Duration to retain status after task completion (ms)      |
+| `queueSizeLimit`     | `number` | `1000`        | Maximum capacity of the task pool                         |
 
-### TaskContext (执行上下文)
+### TaskContext (Execution Context)
 
-| 属性/方法 | 说明 |
-| :--- | :--- |
-| `taskId` | 当前任务的唯一 ID |
-| `signal` | `AbortSignal` 对象，用于响应取消操作 |
-| `reportProgress(n)` | 报告进度 (0-100) |
-| `shouldYield()` | **核心方法**：返回 true 表示当前帧预算已耗尽，建议任务 `await` 挂起 |
+| Property/Method     | Description                                                                                                  |
+| :------------------ | :----------------------------------------------------------------------------------------------------------- |
+| `taskId`            | Unique ID of the current task                                                                                |
+| `signal`            | `AbortSignal` object, used to respond to cancellation operations                                             |
+| `reportProgress(n)` | Report progress (0-100)                                                                                      |
+| `shouldYield()`     | **Core Method**: Returns true if the current frame budget is exhausted, suggesting the task `await` to yield |
 
-## 进阶机制说明
+## Advanced Mechanism Explanation
 
-### 优先级继承原理
-当一个 `HIGH` 优先级的任务被添加到调度器，且它依赖于一个已经在队列中的 `LOW` 优先级任务时：
-1. 调度器会递归遍历依赖链。
-2. 将该 `LOW` 任务临时提升为 `HIGH` 优先级。
-3. 确保依赖项能够尽早执行，从而避免高优任务被无谓阻塞。
+### Priority Inheritance Principle
 
-### 自动化资源管理
-调度器内部维护了一个定时器，每 10 秒扫描一次 `taskMap`。任何进入终态（`COMPLETED`/`FAILED`/`CANCELLED`）且超过 `retentionPeriod` 的任务都会被物理移除，以保持长生命周期应用的内存稳定。
+When a `HIGH` priority task is added to the scheduler and it depends on a `LOW` priority task already in the queue:
 
-## 调试与监控
+1. The scheduler recursively traverses the dependency chain.
+2. Temporarily elevates that `LOW` task to `HIGH` priority.
+3. Ensures the dependency is executed as early as possible, avoiding unnecessary blocking of the high-priority task.
+
+### Automated Resource Management
+
+The scheduler internally maintains a timer that scans the `taskMap` every 10 seconds. Any task that has reached a terminal state (`COMPLETED`/`FAILED`/`CANCELLED`) and exceeded the `retentionPeriod` will be physically removed to maintain memory stability in long-lifecycle applications.
+
+## Debugging and Monitoring
 
 ```typescript
-const stats = scheduler.getStats();
-console.log(`当前 FPS: ${stats.fps}`);
-console.log(`待处理任务: ${stats.pendingTasks}`);
-console.log(`平均等待时间: ${stats.averageWaitTime}ms`);
+const stats = scheduler.getStats()
+console.log(`Current FPS: ${stats.fps}`)
+console.log(`Pending tasks: ${stats.pendingTasks}`)
+console.log(`Average wait time: ${stats.averageWaitTime}ms`)
 ```
 
-## 许可证
+## License
 
 MIT

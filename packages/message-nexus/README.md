@@ -1,8 +1,8 @@
 # message-nexus
 
-一个统一、类型安全、支持多种传输协议的跨上下文消息通信库。
+A unified, type-safe cross-context message communication library supporting multiple transport protocols.
 
-## 安装
+## Installation
 
 ```bash
 npm install message-nexus
@@ -10,37 +10,37 @@ npm install message-nexus
 pnpm add message-nexus
 ```
 
-## 特性
+## Features
 
-- **统一接口**: 支持 Mitt（进程内）、PostMessage（iframe/window 间）、BroadcastChannel（跨标签页）、WebSocket（网络通信）
-- **类型安全**: 完整的 TypeScript 支持，泛型类型推断
-- **请求-响应模式**: Promise 风格的异步通信，内置超时保护
-- **自动重连**: WebSocket 自动重连机制，支持指数退避
-- **消息队列**: 离线消息缓存，连接恢复后自动发送
-- **重试机制**: 请求失败自动重试，可配置重试次数和延迟
-- **消息验证**: 运行时消息格式验证，防止非法消息
-- **监控指标**: 内置消息统计和性能监控
-- **结构化日志**: 支持自定义日志处理器，便于调试和生产监控
-- **资源管理**: 所有 Driver 支持 `destroy()` 方法，正确清理资源
+- **Unified Interface**: Supports Mitt (in-process), PostMessage (iframe/window), BroadcastChannel (cross-tab), and WebSocket (network communication)
+- **Type Safety**: Full TypeScript support with generic type inference
+- **Request-Response Pattern**: Promise-style asynchronous communication with built-in timeout protection
+- **Auto Reconnect**: WebSocket automatic reconnection mechanism with exponential backoff support
+- **Message Queue**: Offline message caching, automatically sent after connection recovery
+- **Retry Mechanism**: Automatic retry on request failure, configurable retry counts and delays
+- **Message Validation**: Runtime message format validation to prevent illegal messages
+- **Monitoring Metrics**: Built-in message statistics and performance monitoring
+- **Structured Logging**: Supports custom log handlers for easy debugging and production monitoring
+- **Resource Management**: All drivers support the `destroy()` method to properly clean up resources.
 
-## 快速开始
+## Quick Start
 
-### 1. 进程内通信（Mitt）
+### 1. In-Process Communication (Mitt)
 
 ```typescript
 import MessageNexus, { MittDriver, createEmitter } from 'message-nexus'
 
-// 共享的 emitter
+// Shared emitter
 const emitter = createEmitter()
 
 const driver = new MittDriver(emitter)
 const nexus = new MessageNexus(driver)
 
-// 发送请求
+// Send request
 const response = await nexus.request('GET_DATA', { id: 123 })
 console.log(response)
 
-// 监听命令
+// Listen for commands
 const receiverDriver = new MittDriver(emitter)
 const receiverNexus = new MessageNexus(receiverDriver)
 const unsubscribe = receiverNexus.onCommand((data) => {
@@ -50,19 +50,19 @@ const unsubscribe = receiverNexus.onCommand((data) => {
 })
 ```
 
-### 2. iframe/Window 通信（PostMessage）
+### 2. iframe/Window Communication (PostMessage)
 
 ```typescript
 import MessageNexus, { PostMessageDriver } from 'message-nexus'
 
-// 发送方
+// Sender
 const driver = new PostMessageDriver(window.parent, 'https://example.com')
 const nexus = new MessageNexus(driver)
 
 const response = await nexus.request('PING')
 console.log('Pong:', response)
 
-// 接收方
+// Receiver
 const iframeDriver = new PostMessageDriver(iframe.contentWindow, 'https://example.com')
 const iframeNexus = new MessageNexus(iframeDriver)
 
@@ -73,28 +73,28 @@ iframeNexus.onCommand((data) => {
 })
 ```
 
-### 3. 跨标签页通信（BroadcastChannel）
+### 3. Cross-Tab Communication (BroadcastChannel)
 
 ```typescript
 import MessageNexus, { BroadcastDriver } from 'message-nexus'
 
-// 创建 BroadcastDriver，指定频道名称
+// Create BroadcastDriver, specifying the channel name
 const driver = new BroadcastDriver({ channel: 'my-app-channel' })
 const nexus = new MessageNexus(driver)
 
-// 监听命令
+// Listen for commands
 nexus.onCommand((data) => {
   console.log('Received:', data.type, data.payload)
   nexus.reply(data.id, { result: 'success' })
 })
 
-// 发送请求（会在所有同频道的标签页中广播）
+// Send request (will be broadcast to all tabs on the same channel)
 const response = await nexus.request({
   type: 'SYNC_STATE',
   payload: { state: '...' },
 })
 
-// 接收方
+// Receiver
 const receiverDriver = new BroadcastDriver({ channel: 'my-app-channel' })
 const receiverNexus = new MessageNexus(receiverDriver)
 receiverNexus.onCommand((data) => {
@@ -103,37 +103,37 @@ receiverNexus.onCommand((data) => {
 })
 ```
 
-### 4. WebSocket 通信
+### 4. WebSocket Communication
 
 ```typescript
 import MessageNexus, { WebSocketDriver } from 'message-nexus'
 
-// 自动重连配置
+// Automatic reconnection configuration
 const driver = new WebSocketDriver({
   url: 'wss://api.example.com/ws',
   reconnect: {
-    maxRetries: 5, // 最大重试次数
-    retryInterval: 3000, // 重试间隔（毫秒）
+    maxRetries: 5, // Maximum retry count
+    retryInterval: 3000, // Retry interval (milliseconds)
   },
 })
 
 const nexus = new MessageNexus(driver)
 
-// 发送请求
+// Send request
 const response = await nexus.request({
   type: 'GET_USER',
   payload: { userId: 123 },
   timeout: 5000,
-  retryCount: 3, // 失败重试 3 次
-  retryDelay: 1000, // 重试延迟
+  retryCount: 3, // Retry 3 times on failure
+  retryDelay: 1000, // Retry delay
 })
 
-// 接收方
+// Receiver
 const receiverDriver = new WebSocketDriver({
   url: 'wss://api.example.com/ws',
   reconnect: {
-    maxRetries: 5, // 最大重试次数
-    retryInterval: 3000, // 重试间隔（毫秒）
+    maxRetries: 5, // Maximum retry count
+    retryInterval: 3000, // Retry interval (milliseconds)
   },
 })
 const receiverNexus = new MessageNexus(receiverDriver)
@@ -143,11 +143,11 @@ receiverNexus.onCommand((data) => {
 })
 ```
 
-## API 文档
+## API Documentation
 
 ### MessageNexus
 
-#### 构造函数
+#### Constructor
 
 ```typescript
 new MessageNexus<RequestPayload, ResponsePayload>(
@@ -158,17 +158,17 @@ new MessageNexus<RequestPayload, ResponsePayload>(
 
 **Options:**
 
-| 参数       | 类型   | 默认值         | 说明                  |
-| ---------- | ------ | -------------- | --------------------- |
-| instanceId | string | auto-generated | 实例 ID，用于消息路由 |
-| timeout    | number | 10000          | 请求超时时间（毫秒）  |
-| logger     | Logger | new Logger()   | 日志实例              |
+| Parameter  | Type   | Default Value  | Description                           |
+| ---------- | ------ | -------------- | ------------------------------------- |
+| instanceId | string | auto-generated | Instance ID, used for message routing |
+| timeout    | number | 10000          | Request timeout (milliseconds)        |
+| logger     | Logger | new Logger()   | Logger instance                       |
 
-#### 方法
+#### Methods
 
 ##### request()
 
-发送请求并等待响应。
+Send request and wait for response.
 
 ```typescript
 nexus.request(typeOrOptions: string | RequestOptions): Promise<ResponsePayload>
@@ -176,23 +176,23 @@ nexus.request(typeOrOptions: string | RequestOptions): Promise<ResponsePayload>
 
 **Options:**
 
-| 参数       | 类型                    | 必填 | 说明                 |
-| ---------- | ----------------------- | ---- | -------------------- |
-| type       | string                  | 是   | 消息类型             |
-| payload    | unknown                 | 否   | 请求数据             |
-| to         | string                  | 否   | 目标实例 ID          |
-| metadata   | Record<string, unknown> | 否   | 元数据               |
-| timeout    | number                  | 否   | 超时时间（覆盖全局） |
-| retryCount | number                  | 否   | 失败重试次数         |
-| retryDelay | number                  | 否   | 重试延迟（毫秒）     |
+| Parameter  | Type                    | Required | Description                  |
+| ---------- | ----------------------- | -------- | ---------------------------- |
+| type       | string                  | Yes      | Message type                 |
+| payload    | unknown                 | No       | Request data                 |
+| to         | string                  | No       | Target instance ID           |
+| metadata   | Record<string, unknown> | No       | Metadata                     |
+| timeout    | number                  | No       | Timeout (overrides global)   |
+| retryCount | number                  | No       | Number of retries on failure |
+| retryDelay | number                  | No       | Retry delay (milliseconds)   |
 
-**示例：**
+**Example:**
 
 ```typescript
-// 简单请求
+// Simple request
 const result = await nexus.request('FETCH_DATA')
 
-// 完整配置
+// Full configuration
 const result = await nexus.request({
   type: 'FETCH_DATA',
   payload: { id: 123 },
@@ -205,15 +205,15 @@ const result = await nexus.request({
 
 ##### onCommand()
 
-注册消息处理器。
+Register message handler.
 
 ```typescript
 nexus.onCommand(handler: (data: CommandMessage) => void): () => void
 ```
 
-**返回值:** 取消监听的函数
+**Return Value:** Unsubscribe function
 
-**示例：**
+**Example:**
 
 ```typescript
 const unsubscribe = nexus.onCommand((data) => {
@@ -224,19 +224,19 @@ const unsubscribe = nexus.onCommand((data) => {
   }
 })
 
-// 取消监听
+// Unsubscribe
 unsubscribe()
 ```
 
 ##### reply()
 
-回复传入消息。
+Reply to incoming message.
 
 ```typescript
 nexus.reply(messageId: string, payload: unknown, error?: unknown)
 ```
 
-**示例：**
+**Example:**
 
 ```typescript
 nexus.reply('message-id-123', { success: true })
@@ -245,45 +245,45 @@ nexus.reply('message-id-456', null, new Error('Invalid request'))
 
 ##### onError()
 
-注册错误处理器。
+Register error handler.
 
 ```typescript
 nexus.onError(handler: ErrorHandler): () => void
 ```
 
-**示例：**
+**Example:**
 
 ```typescript
 nexus.onError((error, context) => {
   console.error('Bridge error:', error.message, context)
-  // 发送到错误追踪服务
+  // Send to error tracking service
   Sentry.captureException(error, { extra: context })
 })
 ```
 
 ##### getMetrics()
 
-获取监控指标。
+Get monitoring metrics.
 
 ```typescript
 nexus.getMetrics(): Metrics
 ```
 
-**返回值:**
+**Return Value:**
 
 ```typescript
 {
-  messagesSent: number // 发送消息数
-  messagesReceived: number // 接收消息数
-  messagesFailed: number // 失败消息数
-  pendingMessages: number // 待处理消息数
-  queuedMessages: number // 队列消息数
-  totalLatency: number // 总延迟（毫秒）
-  averageLatency: number // 平均延迟（毫秒）
+  messagesSent: number // Messages sent
+  messagesReceived: number // Messages received
+  messagesFailed: number // Messages failed
+  pendingMessages: number // Pending messages
+  queuedMessages: number // Queued messages
+  totalLatency: number // Total latency (milliseconds)
+  averageLatency: number // Average latency (milliseconds)
 }
 ```
 
-**示例：**
+**Example:**
 
 ```typescript
 const metrics = nexus.getMetrics()
@@ -295,24 +295,24 @@ console.log(
 
 ##### onMetrics()
 
-注册指标变更回调。
+Register metrics change callback.
 
 ```typescript
 nexus.onMetrics(callback: MetricsCallback): () => void
 ```
 
-**示例：**
+**Example:**
 
 ```typescript
 const unsubscribe = nexus.onMetrics((metrics) => {
-  // 发送到监控系统
+  // Send to monitoring system
   metricsService.report(metrics)
 })
 ```
 
 ##### flushQueue()
 
-刷新消息队列，发送所有缓存的消息。
+Flush the message queue, sending all cached messages.
 
 ```typescript
 nexus.flushQueue()
@@ -320,17 +320,17 @@ nexus.flushQueue()
 
 ##### destroy()
 
-销毁实例，清理资源。
+Destroy the instance and clean up resources.
 
 ```typescript
 nexus.destroy()
 ```
 
-**注意**: `destroy()` 方法会自动调用驱动的 `destroy()` 方法来清理事件监听器等资源。建议在组件卸载时调用此方法以避免内存泄漏。
+**Note**: The `destroy()` method automatically calls the driver's `destroy()` method to clean up resources like event listeners. It is recommended to call this method when the component is unmounted to avoid memory leaks.
 
 ### WebSocketDriver
 
-#### 构造函数
+#### Constructor
 
 ```typescript
 new WebSocketDriver(options: WebSocketDriverOptions)
@@ -338,20 +338,20 @@ new WebSocketDriver(options: WebSocketDriverOptions)
 
 **Options:**
 
-| 参数      | 类型                        | 默认值       | 说明          |
-| --------- | --------------------------- | ------------ | ------------- |
-| url       | string                      | 必填         | WebSocket URL |
-| reconnect | boolean \| ReconnectOptions | true         | 是否自动重连  |
-| logger    | Logger                      | new Logger() | 日志实例      |
+| Parameter | Type                        | Default Value | Description                        |
+| --------- | --------------------------- | ------------- | ---------------------------------- |
+| url       | string                      | Required      | WebSocket URL                      |
+| reconnect | boolean \| ReconnectOptions | true          | Whether to automatically reconnect |
+| logger    | Logger                      | new Logger()  | Logger instance                    |
 
 **ReconnectOptions:**
 
-| 参数          | 类型   | 默认值   | 说明             |
-| ------------- | ------ | -------- | ---------------- |
-| maxRetries    | number | Infinity | 最大重试次数     |
-| retryInterval | number | 5000     | 重试间隔（毫秒） |
+| Parameter     | Type   | Default Value | Description                   |
+| ------------- | ------ | ------------- | ----------------------------- |
+| maxRetries    | number | Infinity      | Maximum retry count           |
+| retryInterval | number | 5000          | Retry interval (milliseconds) |
 
-**示例：**
+**Example:**
 
 ```typescript
 const driver = new WebSocketDriver({
@@ -363,11 +363,11 @@ const driver = new WebSocketDriver({
 })
 ```
 
-#### 方法
+#### Methods
 
 ##### close()
 
-关闭连接并停止重连。
+Close connection and stop reconnection.
 
 ```typescript
 driver.close()
@@ -375,20 +375,20 @@ driver.close()
 
 ### PostMessageDriver
 
-#### 构造函数
+#### Constructor
 
 ```typescript
 new PostMessageDriver(targetWindow: Window, targetOrigin: string)
 ```
 
-**参数:**
+**Parameters:**
 
-| 参数         | 类型   | 必填 | 说明                                  |
-| ------------ | ------ | ---- | ------------------------------------- |
-| targetWindow | Window | 是   | 目标窗口对象                          |
-| targetOrigin | string | 是   | 目标源地址（安全要求，不能使用 '\*'） |
+| Parameter    | Type   | Required | Description                                                       |
+| ------------ | ------ | -------- | ----------------------------------------------------------------- |
+| targetWindow | Window | Yes      | Target window object                                              |
+| targetOrigin | string | Yes      | Target origin address (security requirement, '\*' cannot be used) |
 
-**示例：**
+**Example:**
 
 ```typescript
 const driver = new PostMessageDriver(window.parent, 'https://app.example.com')
@@ -396,27 +396,27 @@ const driver = new PostMessageDriver(window.parent, 'https://app.example.com')
 
 ### MittDriver
 
-#### 构造函数
+#### Constructor
 
 ```typescript
 new MittDriver(emitter: Emitter<Record<string, Message>>)
 ```
 
-**示例：**
+**Example:**
 
 ```typescript
 import { createEmitter, MittDriver } from 'message-nexus'
 
-// 使用工厂函数创建独立的 emitter 实例
+// Use the factory function to create an independent emitter instance
 const emitter = createEmitter()
 const driver = new MittDriver(emitter)
 ```
 
-**注意**: 推荐使用 `createEmitter()` 工厂函数创建独立的 emitter 实例。
+**Note**: It is recommended to use the `createEmitter()` factory function to create an independent emitter instance.
 
 ### BroadcastDriver
 
-#### 构造函数
+#### Constructor
 
 ```typescript
 new BroadcastDriver(options: BroadcastDriverOptions)
@@ -424,11 +424,11 @@ new BroadcastDriver(options: BroadcastDriverOptions)
 
 **BroadcastDriverOptions:**
 
-| 参数    | 类型   | 默认值 | 说明         |
-| ------- | ------ | ------ | ------------ |
-| channel | string | 必填   | 广播频道名称 |
+| Parameter | Type   | Default Value | Description            |
+| --------- | ------ | ------------- | ---------------------- |
+| channel   | string | Required      | Broadcast channel name |
 
-**示例：**
+**Example:**
 
 ```typescript
 import { BroadcastDriver, MessageNexus } from 'message-nexus'
@@ -436,25 +436,25 @@ import { BroadcastDriver, MessageNexus } from 'message-nexus'
 const driver = new BroadcastDriver({ channel: 'my-app-channel' })
 const nexus = new MessageNexus(driver)
 
-// 监听来自其他标签页的消息
+// Listen for messages from other tabs
 nexus.onCommand((data) => {
   console.log('Received from another tab:', data)
   nexus.reply(data.id, { received: true })
 })
 
-// 清理资源
+// Clean up resources
 nexus.destroy()
 ```
 
-**特性：**
+**Features:**
 
-- 同一源下的多个标签页可以通过相同频道名进行通信
-- 自动添加协议标识符，过滤非 MessageNexus 消息
-- 支持动态切换频道
+- Multiple tabs under the same origin can communicate via the same channel name
+- Automatically adds a protocol identifier to filter non-MessageNexus messages
+- Supports dynamic channel switching
 
-## Logger 日志
+## Logger
 
-### 基本使用
+### Basic Usage
 
 ```typescript
 import { Logger, createConsoleHandler, LogLevel } from 'message-nexus/utils/logger'
@@ -468,7 +468,7 @@ logger.warn('Warning message')
 logger.error('Error message', { error: new Error('test') })
 ```
 
-### 自定义日志处理器
+### Custom Log Handler
 
 ```typescript
 const apiHandler = (entry) => {
@@ -481,13 +481,13 @@ const apiHandler = (entry) => {
 logger.addHandler(apiHandler)
 ```
 
-### 设置日志级别
+### Set Log Level
 
 ```typescript
-logger.setMinLevel(LogLevel.WARN) // 只输出 WARN 和 ERROR
+logger.setMinLevel(LogLevel.WARN) // Only output WARN and ERROR
 ```
 
-### 在 Bridge 中使用
+### Usage in Bridge
 
 ```typescript
 import { Logger } from 'message-nexus/utils/logger'
@@ -496,11 +496,11 @@ const logger = new Logger('MyBridge')
 const nexus = new MessageNexus(driver, { logger })
 ```
 
-## 设计亮点
+## Design Highlights
 
-### 1. 类型安全
+### 1. Type Safety
 
-MessageNexus 使用 TypeScript 泛型提供完整的类型推断：
+MessageNexus uses TypeScript generics to provide full type inference:
 
 ```typescript
 interface UserRequest {
@@ -514,42 +514,42 @@ interface UserResponse {
 
 const nexus = new MessageNexus<UserRequest, UserResponse>(driver)
 
-// 完整的类型推断
+// Full type inference
 const response = await nexus.request({
   type: 'GET_USER',
-  payload: { userId: 123 }, // 类型: UserRequest
+  payload: { userId: 123 }, // Type: UserRequest
 })
 
-// response 类型: UserResponse
+// response Type: UserResponse
 console.log(response.name)
 ```
 
-### 2. 内存安全
+### 2. Memory Safety
 
-- **自动清理**: 定期清理过期的消息记录
-- **手动清理**: `reply()` 后立即删除记录
-- **资源释放**: `destroy()` 方法清理所有定时器和事件监听器
-- **队列限制**: 消息队列有最大大小限制，防止无限增长
-- **Driver 生命周期**: 每个 Driver 实现 `destroy()` 方法，正确释放资源
-- **Emitter 隔离**: 推荐使用 `createEmitter()` 创建独立实例，避免共享单例导致的内存泄漏
+- **Auto Cleanup**: Regularly clean up expired message records
+- **Manual Cleanup**: Records are deleted immediately after `reply()`
+- **Resource Release**: The `destroy()` method cleans up all timers and event listeners
+- **Queue Limits**: The message queue has a maximum size limit to prevent infinite growth
+- **Driver Lifecycle**: Each driver implements the `destroy()` method to correctly release resources
+- **Emitter Isolation**: Recommended to use `createEmitter()` to create independent instances, avoiding memory leaks caused by shared singletons
 
-### 3. 错误恢复
+### 3. Error Recovery
 
-- **自动重连**: WebSocket 断线自动重连，指数退避策略
-- **请求重试**: 失败请求自动重试，可配置次数和延迟
-- **消息队列**: 离线消息缓存，连接恢复后自动发送
-- **错误回调**: 统一的错误处理机制
+- **Auto Reconnect**: WebSocket automatic reconnection mechanism with exponential backoff strategy
+- **Request Retry**: Automatic retry on request failure, configurable retry counts and delays
+- **Message Queue**: Offline message caching, automatically sent after connection recovery
+- **Error Callback**: Unified error handling mechanism
 
-### 4. 安全加固
+### 4. Security Hardening
 
-- **PostMessage**: 禁止使用 `'*'` 作为 targetOrigin，必须明确指定源地址
-- **BroadcastChannel**: 使用协议标识符 `__messageBridge` 区分 MessageNexus 消息和用户自定义消息
-- **消息验证**: 运行时验证消息格式，防止非法消息导致崩溃
-- **来源过滤**: 自动过滤非目标消息
+- **PostMessage**: Prohibit using `'*'` as targetOrigin; the origin address must be explicitly specified
+- **BroadcastChannel**: Use the protocol identifier `__messageBridge` to distinguish MessageNexus messages from user-defined messages
+- **Message Validation**: Runtime validation of message format to prevent crashes from illegal messages
+- **Source Filtering**: Automatically filters non-target messages
 
-### 5. 可观测性
+### 5. Observability
 
-内置监控指标，便于生产环境监控：
+Built-in monitoring metrics for easy production environment monitoring:
 
 ```typescript
 const metrics = nexus.getMetrics()
@@ -562,34 +562,34 @@ console.log(`Avg latency: ${metrics.averageLatency}ms`)
 console.log(`Pending: ${metrics.pendingMessages}, Queued: ${metrics.queuedMessages}`)
 ```
 
-### 6. 结构化日志
+### 6. Structured Logging
 
-统一的日志接口，支持多种输出方式：
+Unified logging interface supporting multiple output methods:
 
 ```typescript
-// 控制台输出
+// Console output
 logger.addHandler(createConsoleHandler())
 
-// 发送到 API
+// Send to API
 logger.addHandler((entry) => {
   fetch('/api/logs', { body: JSON.stringify(entry) })
 })
 
-// 发送到 ELK
+// Send to ELK
 logger.addHandler((entry) => {
   elk.send(entry)
 })
 ```
 
-## 测试
+## Testing
 
-运行单元测试：
+Run unit tests:
 
 ```bash
 cd packages/message-nexus
 pnpm test:run
 ```
 
-## 许可证
+## License
 
 MIT

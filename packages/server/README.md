@@ -1,43 +1,43 @@
 # @message-nexus/server
 
-一个用于测试 `message-nexus` WebSocket 驱动的简单 Node.js WebSocket 服务端。
+A simple Node.js WebSocket server for testing the message-nexus WebSocket driver.
 
-## 特性
+## Features
 
-- **WebSocket 支持**: 基于 `ws` 库实现的轻量级 WebSocket 服务。
-- **消息广播**: 自动将接收到的消息广播给所有其他已连接的客户端（用于模拟跨客户端通信）。
-- **简单易用**: 零配置启动，支持环境变量配置端口。
-- **优雅停机**: 支持 SIGINT 信号处理，确保连接安全关闭。
+- **WebSocket Support**: Lightweight WebSocket service implemented based on the `ws` library.
+- **Message Broadcasting**: Automatically broadcasts received messages to all other connected clients (used to simulate cross-client communication).
+- **Simple and Easy to Use**: Zero-configuration startup, supports port configuration via environment variables.
+- **Graceful Shutdown**: Supports SIGINT signal handling to ensure connections are safely closed.
 
-## 快速开始
+## Quick Start
 
-### 安装依赖
+### Install Dependencies
 
-在项目根目录下运行：
+Run in the project root directory:
 
 ```bash
 pnpm install
 ```
 
-### 启动服务
+### Start Service
 
 ```bash
 pnpm dev:ws
 ```
 
-默认在 `8080` 端口启动。
+Starts on port `8080` by default.
 
-### 配置端口
+### Configure Port
 
-可以通过 `WS_PORT` 环境变量自定义端口：
+Port can be customized via the `WS_PORT` environment variable:
 
 ```bash
 WS_PORT=9000 pnpm dev:ws
 ```
 
-## 在 MessageNexus 中使用
+## Usage in MessageNexus
 
-配合 `message-nexus` 的 `WebSocketDriver` 使用：
+Use with the `WebSocketDriver` from `message-nexus`:
 
 ```typescript
 import { MessageNexus, WebSocketDriver } from 'message-nexus'
@@ -45,12 +45,12 @@ import { MessageNexus, WebSocketDriver } from 'message-nexus'
 const driver = new WebSocketDriver('ws://localhost:8080')
 const nexus = new MessageNexus(driver)
 
-// 连接成功后即可进行通信
+// Communicate once the connection is successful
 ```
 
-## 开发与调试
+## Development and Debugging
 
-服务端启动后会输出连接和消息日志，便于调试 `WebSocketDriver` 的连接、重连和消息传输机制。
+The server outputs connection and message logs after starting, facilitating the debugging of the `WebSocketDriver`'s connection, reconnection, and message transmission mechanisms.
 
 ```bash
 [2026-02-27T08:39:35.000Z] WebSocket server starting on port 8080...
