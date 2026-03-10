@@ -75,16 +75,16 @@ export type { MessageNexusOptions, RequestOptions, Message }
 
 ### Naming Conventions
 
-| Pattern         | Convention               | Example                       |
-| --------------- | ------------------------ | ----------------------------- |
+| Pattern         | Convention               | Example                      |
+| --------------- | ------------------------ | ---------------------------- |
 | Classes         | PascalCase               | `MessageNexus`, `BaseDriver` |
 | Interfaces      | PascalCase               | `MessageNexusOptions`        |
-| Types           | PascalCase               | `ErrorHandler`                |
-| Enums           | PascalCase               | `LogLevel`                    |
-| Private members | camelCase with `private` | `private cleanupInterval`     |
-| Methods         | camelCase                | `onCommand`, `getMetrics`     |
-| Constants       | UPPER_SNAKE_CASE         | `LOG_LEVEL_DEBUG`             |
-| Files           | kebab-case               | `web-socket-driver.ts`        |
+| Types           | PascalCase               | `ErrorHandler`               |
+| Enums           | PascalCase               | `LogLevel`                   |
+| Private members | camelCase with `private` | `private cleanupInterval`    |
+| Methods         | camelCase                | `onCommand`, `getMetrics`    |
+| Constants       | UPPER_SNAKE_CASE         | `LOG_LEVEL_DEBUG`            |
+| Files           | kebab-case               | `web-socket-driver.ts`       |
 
 ### Formatting (Prettier)
 

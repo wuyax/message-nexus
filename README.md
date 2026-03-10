@@ -76,6 +76,8 @@ pnpm lint
 Core message communication library, supporting the following features:
 
 - **Unified Interface**: Supports Mitt (in-process), PostMessage (iframe/window), BroadcastChannel (cross-tab), and WebSocket (network communication)
+- **JSON-RPC 2.0 Compliance**: Strict adherence to the JSON-RPC 2.0 specification for standardized communication
+- **Envelope Pattern**: Extensible message envelope containing routing information (from, to) and metadata
 - **Type Safety**: Full TypeScript support with generic type inference
 - **Request-Response Pattern**: Promise-style asynchronous communication with built-in timeout protection
 - **Auto Reconnect**: WebSocket automatic reconnection mechanism with exponential backoff support
@@ -97,14 +99,14 @@ const nexus = new MessageNexus(driver)
 
 // Send request
 const response = await nexus.request({
-  type: 'GET_DATA',
-  payload: { id: 123 },
+  method: 'GET_DATA',
+  params: { id: 123 },
 })
 
 // Listen for commands
 const unsubscribe = nexus.onCommand((data) => {
-  if (data.type === 'GET_DATA') {
-    nexus.reply(data.id, { name: 'test', value: 42 })
+  if (data.payload.method === 'GET_DATA') {
+    nexus.reply(data.payload.id as string, { name: 'test', value: 42 })
   }
 })
 

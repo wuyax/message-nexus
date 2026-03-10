@@ -13,6 +13,8 @@ pnpm add message-nexus
 ## Features
 
 - **Unified Interface**: Supports Mitt (in-process), PostMessage (iframe/window), BroadcastChannel (cross-tab), and WebSocket (network communication)
+- **JSON-RPC 2.0 Compliance**: Strict adherence to the JSON-RPC 2.0 specification for standardized communication
+- **Envelope Pattern**: Extensible message envelope containing routing information (from, to) and metadata
 - **Type Safety**: Full TypeScript support with generic type inference
 - **Request-Response Pattern**: Promise-style asynchronous communication with built-in timeout protection
 - **Auto Reconnect**: WebSocket automatic reconnection mechanism with exponential backoff support
@@ -44,8 +46,8 @@ console.log(response)
 const receiverDriver = new MittDriver(emitter)
 const receiverNexus = new MessageNexus(receiverDriver)
 const unsubscribe = receiverNexus.onCommand((data) => {
-  if (data.type === 'GET_DATA') {
-    receiverNexus.reply(data.id, { name: 'test', value: 42 })
+  if (data.payload.method === 'GET_DATA') {
+    receiverNexus.reply(data.payload.id as string, { name: 'test', value: 42 })
   }
 })
 ```
@@ -67,8 +69,8 @@ const iframeDriver = new PostMessageDriver(iframe.contentWindow, 'https://exampl
 const iframeNexus = new MessageNexus(iframeDriver)
 
 iframeNexus.onCommand((data) => {
-  if (data.type === 'PING') {
-    iframeNexus.reply(data.id, { time: Date.now() })
+  if (data.payload.method === 'PING') {
+    iframeNexus.reply(data.payload.id as string, { time: Date.now() })
   }
 })
 ```
@@ -84,22 +86,22 @@ const nexus = new MessageNexus(driver)
 
 // Listen for commands
 nexus.onCommand((data) => {
-  console.log('Received:', data.type, data.payload)
-  nexus.reply(data.id, { result: 'success' })
+  console.log('Received:', data.payload.method, data.payload.params)
+  nexus.reply(data.payload.id as string, { result: 'success' })
 })
 
 // Send request (will be broadcast to all tabs on the same channel)
 const response = await nexus.request({
-  type: 'SYNC_STATE',
-  payload: { state: '...' },
+  method: 'SYNC_STATE',
+  params: { state: '...' },
 })
 
 // Receiver
 const receiverDriver = new BroadcastDriver({ channel: 'my-app-channel' })
 const receiverNexus = new MessageNexus(receiverDriver)
 receiverNexus.onCommand((data) => {
-  console.log('Received:', data.type, data.payload)
-  receiverNexus.reply(data.id, { result: 'success' })
+  console.log('Received:', data.payload.method, data.payload.params)
+  receiverNexus.reply(data.payload.id as string, { result: 'success' })
 })
 ```
 
@@ -121,8 +123,8 @@ const nexus = new MessageNexus(driver)
 
 // Send request
 const response = await nexus.request({
-  type: 'GET_USER',
-  payload: { userId: 123 },
+  method: 'GET_USER',
+  params: { userId: 123 },
   timeout: 5000,
   retryCount: 3, // Retry 3 times on failure
   retryDelay: 1000, // Retry delay
@@ -138,8 +140,8 @@ const receiverDriver = new WebSocketDriver({
 })
 const receiverNexus = new MessageNexus(receiverDriver)
 receiverNexus.onCommand((data) => {
-  console.log('Received:', data.type, data.payload)
-  receiverNexus.reply(data.id, { result: 'success' })
+  console.log('Received:', data.payload.method, data.payload.params)
+  receiverNexus.reply(data.payload.id as string, { result: 'success' })
 })
 ```
 
@@ -171,15 +173,15 @@ new MessageNexus<RequestPayload, ResponsePayload>(
 Send request and wait for response.
 
 ```typescript
-nexus.request(typeOrOptions: string | RequestOptions): Promise<ResponsePayload>
+nexus.request(methodOrOptions: string | RequestOptions): Promise<ResponsePayload>
 ```
 
 **Options:**
 
 | Parameter  | Type                    | Required | Description                  |
 | ---------- | ----------------------- | -------- | ---------------------------- |
-| type       | string                  | Yes      | Message type                 |
-| payload    | unknown                 | No       | Request data                 |
+| method     | string                  | Yes      | Message method               |
+| params     | unknown                 | No       | Request data                 |
 | to         | string                  | No       | Target instance ID           |
 | metadata   | Record<string, unknown> | No       | Metadata                     |
 | timeout    | number                  | No       | Timeout (overrides global)   |
@@ -194,8 +196,8 @@ const result = await nexus.request('FETCH_DATA')
 
 // Full configuration
 const result = await nexus.request({
-  type: 'FETCH_DATA',
-  payload: { id: 123 },
+  method: 'FETCH_DATA',
+  params: { id: 123 },
   to: 'target-instance',
   timeout: 5000,
   retryCount: 3,
@@ -217,10 +219,10 @@ nexus.onCommand(handler: (data: CommandMessage) => void): () => void
 
 ```typescript
 const unsubscribe = nexus.onCommand((data) => {
-  console.log('Received:', data.type, data.payload)
+  console.log('Received:', data.payload.method, data.payload.params)
 
-  if (data.type === 'ECHO') {
-    nexus.reply(data.id, { echoed: data.payload })
+  if (data.payload.method === 'ECHO') {
+    nexus.reply(data.payload.id as string, { echoed: data.payload.params })
   }
 })
 
@@ -516,8 +518,8 @@ const nexus = new MessageNexus<UserRequest, UserResponse>(driver)
 
 // Full type inference
 const response = await nexus.request({
-  type: 'GET_USER',
-  payload: { userId: 123 }, // Type: UserRequest
+  method: 'GET_USER',
+  params: { userId: 123 }, // Type: UserRequest
 })
 
 // response Type: UserResponse
