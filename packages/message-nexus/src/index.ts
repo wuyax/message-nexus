@@ -1,4 +1,9 @@
-import BaseDriver, { type Message } from './drivers/BaseDriver'
+import BaseDriver, {
+  type Message,
+  type NexusEnvelope,
+  type JsonRpcRequest,
+  type JsonRpcResponse,
+} from './drivers/BaseDriver'
 import BroadcastDriver from './drivers/BroadcastDriver'
 import MittDriver from './drivers/MittDriver'
 import PostMessageDriver from './drivers/PostMessageDriver'
@@ -14,8 +19,8 @@ interface MessageNexusOptions {
 }
 
 interface RequestOptions {
-  type: string
-  payload?: unknown
+  method: string
+  params?: unknown
   to?: string
   metadata?: Record<string, unknown>
   timeout?: number
@@ -23,10 +28,7 @@ interface RequestOptions {
   retryDelay?: number
 }
 
-export interface CommandMessage extends Message {
-  type: string
-  payload?: unknown
-}
+export type CommandMessage = NexusEnvelope<JsonRpcRequest>
 
 export type ErrorHandler = (error: Error, context?: Record<string, unknown>) => void
 
@@ -54,7 +56,7 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
       timestamp: number
     }
   >
-  incomingMessages: Map<string, { from?: string; type: string; timestamp: number }>
+  incomingMessages: Map<string, { from: string; method: string; timestamp: number }>
   messageHandlers: Set<(data: CommandMessage) => void>
   timeout: number
   instanceId: string
@@ -111,27 +113,27 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
     }, 60000)
   }
 
-  async request(typeOrOptions: string | RequestOptions): Promise<ResponsePayload> {
+  async request(methodOrOptions: string | RequestOptions): Promise<ResponsePayload> {
     const id = crypto.randomUUID()
 
-    let type: string
-    let payload: unknown
+    let method: string
+    let params: unknown
     let to: string | undefined
     let metadata: Record<string, unknown>
     let timeout: number
     let retryCount = 0
     let retryDelay = 1000
 
-    if (typeof typeOrOptions === 'string') {
-      type = typeOrOptions
-      payload = undefined
+    if (typeof methodOrOptions === 'string') {
+      method = methodOrOptions
+      params = undefined
       to = undefined
       metadata = {}
       timeout = this.timeout
     } else {
-      const opts = typeOrOptions
-      type = opts.type
-      payload = opts.payload
+      const opts = methodOrOptions
+      method = opts.method
+      params = opts.params
       to = opts.to
       metadata = opts.metadata || {}
       timeout = opts.timeout ?? this.timeout
@@ -145,18 +147,23 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
           this.pendingTasks.delete(id)
           this.metrics.messagesFailed++
           this.metrics.pendingMessages--
-          reject(new Error(`Message timeout: ${type} (${id})`))
+          reject(new Error(`Message timeout: ${method} (${id})`))
         }, timeout)
 
         this.pendingTasks.set(id, { resolve, reject, timer, timestamp: Date.now() })
 
-        const message: Message = {
+        const rpcRequest: JsonRpcRequest = {
+          jsonrpc: '2.0',
+          method,
+          params,
           id,
-          type,
-          payload,
+        }
+
+        const message: Message = {
           from: this.instanceId,
           to,
           metadata: { ...metadata, timestamp: Date.now() },
+          payload: rpcRequest,
         }
 
         this._sendMessage(message)
@@ -176,21 +183,28 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
   }
 
   private _sendMessage(message: Message) {
+    const payload = message.payload as JsonRpcRequest | JsonRpcResponse
+    const isRequest = 'method' in payload
+    const messageId = payload.id
+    const typeOrMethod = isRequest ? payload.method : 'RESPONSE'
+
     try {
       this.driver.send(message)
       this.metrics.messagesSent++
-      this.metrics.pendingMessages++
-      this.logger.debug('Message sent', { messageId: message.id, type: message.type })
+      if (isRequest) {
+        this.metrics.pendingMessages++
+      }
+      this.logger.debug('Message sent', { messageId, type: typeOrMethod })
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
       this.metrics.messagesFailed++
-      this.logger.error('Failed to send message', { error: err.message, messageId: message.id })
+      this.logger.error('Failed to send message', { error: err.message, messageId })
       this.errorHandler?.(err, { message })
 
       if (this.messageQueue.length < this.maxQueueSize) {
         this.messageQueue.push(message)
         this.logger.debug('Message queued', {
-          messageId: message.id,
+          messageId,
           queueSize: this.messageQueue.length + 1,
         })
       } else {
@@ -228,14 +242,20 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
 
   private _validateMessage(data: unknown): data is Message {
     if (!data || typeof data !== 'object') return false
-    const msg = data as Partial<Message>
+    const env = data as Partial<Message>
 
-    if (typeof msg.id !== 'string') return false
-    if (typeof msg.type !== 'string') return false
-    if (msg.from && typeof msg.from !== 'string') return false
-    if (msg.to && typeof msg.to !== 'string') return false
-    if (msg.metadata && typeof msg.metadata !== 'object') return false
-    if (msg.isResponse !== undefined && typeof msg.isResponse !== 'boolean') return false
+    if (typeof env.from !== 'string') return false
+    if (env.to !== undefined && typeof env.to !== 'string') return false
+    if (env.metadata !== undefined && typeof env.metadata !== 'object') return false
+
+    const payload = env.payload as any
+    if (!payload || typeof payload !== 'object') return false
+    if (payload.jsonrpc !== '2.0') return false
+
+    const isRequest = 'method' in payload
+    const isResponse = 'result' in payload || 'error' in payload
+
+    if (!isRequest && !isResponse) return false
 
     return true
   }
@@ -248,45 +268,72 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
       return
     }
 
-    const { id, to, type, payload, isResponse, error, from } = data
+    const envelope = data as Message
+    const payload = envelope.payload as JsonRpcRequest | JsonRpcResponse
 
-    if (to && to !== this.instanceId) {
+    if (envelope.to && envelope.to !== this.instanceId) {
       this.logger.debug('Message filtered: not for this instance', {
-        messageId: id,
-        to,
+        messageId: payload.id,
+        to: envelope.to,
         instanceId: this.instanceId,
       })
       return
     }
 
-    if (isResponse && this.pendingTasks.has(id)) {
-      const { resolve, reject, timer, timestamp } = this.pendingTasks.get(id)!
-      clearTimeout(timer)
-      this.pendingTasks.delete(id)
+    if ('result' in payload || 'error' in payload) {
+      const response = payload as JsonRpcResponse
+      const id = String(response.id)
 
-      const latency = Date.now() - timestamp
-      this.metrics.messagesReceived++
-      this.metrics.pendingMessages--
-      this.metrics.totalLatency += latency
-      this.metrics.averageLatency = this.metrics.totalLatency / this.metrics.messagesReceived
+      if (this.pendingTasks.has(id)) {
+        const { resolve, reject, timer, timestamp } = this.pendingTasks.get(id)!
+        clearTimeout(timer)
+        this.pendingTasks.delete(id)
 
-      this.logger.debug('Response received', { messageId: id, latency })
+        const latency = Date.now() - timestamp
+        this.metrics.messagesReceived++
+        this.metrics.pendingMessages--
+        this.metrics.totalLatency += latency
+        this.metrics.averageLatency = this.metrics.totalLatency / this.metrics.messagesReceived
 
-      if (error) reject(error)
-      else resolve(payload as ResponsePayload)
+        this.logger.debug('Response received', { messageId: id, latency })
 
-      this._notifyMetrics()
+        if (response.error) {
+          const err = new Error(response.error.message)
+          ;(err as any).code = response.error.code
+          ;(err as any).data = response.error.data
+          reject(err)
+        } else {
+          resolve(response.result as ResponsePayload)
+        }
+
+        this._notifyMetrics()
+      } else {
+        this.logger.warn('Orphaned response received', { messageId: id })
+      }
       return
     }
 
-    if (isResponse) {
-      this.logger.warn('Orphaned response received', { messageId: id })
-      return
-    }
+    if ('method' in payload) {
+      const request = payload as JsonRpcRequest
+      const id = String(request.id)
 
-    this.logger.debug('Command message received', { messageId: id, type, from })
-    this.incomingMessages.set(id, { from, type, timestamp: Date.now() })
-    this.messageHandlers.forEach((handler) => handler(data))
+      this.logger.debug('Command message received', {
+        messageId: id,
+        type: request.method,
+        from: envelope.from,
+      })
+      this.incomingMessages.set(id, {
+        from: envelope.from,
+        method: request.method,
+        timestamp: Date.now(),
+      })
+
+      const commandMessage: CommandMessage = {
+        ...envelope,
+        payload: request,
+      }
+      this.messageHandlers.forEach((handler) => handler(commandMessage))
+    }
   }
 
   getMetrics(): Metrics {
@@ -314,19 +361,34 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
       throw new Error(`Message not found: ${messageId}`)
     }
 
-    const responsePayload = payload
-    const responseError = error
+    let rpcResponse: JsonRpcResponse
 
-    this.driver.send({
-      id: messageId,
-      type: `${incoming.type}_RESPONSE`,
-      payload: responsePayload,
-      error: responseError,
-      isResponse: true,
+    if (error) {
+      const err = error instanceof Error ? error : new Error(String(error))
+      rpcResponse = {
+        jsonrpc: '2.0',
+        id: messageId,
+        error: {
+          code: (err as any).code || -32000,
+          message: err.message,
+          data: (err as any).data,
+        },
+      }
+    } else {
+      rpcResponse = {
+        jsonrpc: '2.0',
+        id: messageId,
+        result: payload,
+      }
+    }
+
+    const message: Message = {
       from: this.instanceId,
       to: incoming.from,
-    })
+      payload: rpcResponse,
+    }
 
+    this.driver.send(message)
     this.incomingMessages.delete(messageId)
   }
 
@@ -338,7 +400,6 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
       metrics: this.getMetrics(),
     })
 
-    // Clean up driver resources (e.g., event listeners)
     this.driver.destroy?.()
 
     if (this.cleanupInterval) {
@@ -346,7 +407,6 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
       this.cleanupInterval = null
     }
 
-    // Clear all handlers
     this.messageHandlers.clear()
     this.metricsCallbacks.clear()
   }

@@ -6,9 +6,9 @@ import { useAutoScroll } from '../composables/useAutoScroll'
 
 interface LogEntry {
   time: string
-  type: string
+  method: string
   direction: 'sent' | 'received'
-  payload: unknown
+  params?: unknown
 }
 
 interface Metrics {
@@ -42,12 +42,12 @@ const logListRef = ref<HTMLElement | null>(null)
 
 useAutoScroll(logListRef, logs)
 
-function addLog(type: string, direction: 'sent' | 'received', payload: unknown) {
+function addLog(method: string, direction: 'sent' | 'received', params?: unknown) {
   logs.value.push({
     time: new Date().toLocaleTimeString(),
-    type,
+    method,
     direction,
-    payload,
+    params,
   })
 }
 
@@ -82,9 +82,9 @@ function connect() {
     nexusRef.value = nexus
 
     nexus.onCommand((data) => {
-      addLog(data.type, 'received', data)
+      addLog(data.payload.method, 'received', data)
       updateMetrics()
-      nexus.reply(data.id, { message: `${data.type} processed` })
+      nexus.reply(String(data.payload.id), { message: `${data.payload.method} processed` })
     })
 
     nexus.onError((error) => {
@@ -131,8 +131,8 @@ function sendRequest() {
 
     nexusRef.value
       .request({
-        type: 'PING',
-        payload,
+        method: 'PING',
+        params: payload,
       })
       .then((res) => {
         addLog('RESPONSE', 'received', res)
@@ -151,10 +151,10 @@ function sendRequest() {
 function sendGetTime() {
   if (!nexusRef.value) return
 
-  addLog('REQUEST', 'sent', { type: 'GET_TIME' })
+  addLog('REQUEST', 'sent', { method: 'GET_TIME' })
 
   nexusRef.value
-    .request({ type: 'GET_TIME' })
+    .request({ method: 'GET_TIME' })
     .then((res) => {
       addLog('RESPONSE', 'received', res)
       responseData.value = res
@@ -169,12 +169,12 @@ function sendEcho() {
   if (!nexusRef.value) return
 
   const payload = { message: 'Hello Echo!', timestamp: Date.now() }
-  addLog('REQUEST', 'sent', { type: 'ECHO', payload })
+  addLog('REQUEST', 'sent', { method: 'ECHO', params: payload, payload })
 
   nexusRef.value
     .request({
-      type: 'ECHO',
-      payload,
+      method: 'ECHO',
+      params: payload,
     })
     .then((res) => {
       addLog('RESPONSE', 'received', res)
@@ -189,10 +189,10 @@ function sendEcho() {
 function sendGetData() {
   if (!nexusRef.value) return
 
-  addLog('REQUEST', 'sent', { type: 'GET_DATA' })
+  addLog('REQUEST', 'sent', { method: 'GET_DATA' })
 
   nexusRef.value
-    .request({ type: 'GET_DATA' })
+    .request({ method: 'GET_DATA' })
     .then((res) => {
       addLog('RESPONSE', 'received', res)
       responseData.value = res
@@ -307,9 +307,9 @@ onUnmounted(() => {
           </div>
           <div v-for="(log, index) in logs" :key="index" class="log-item" :class="log.direction">
             <span class="log-time">{{ log.time }}</span>
-            <span class="log-type" :class="log.type.toLowerCase()">{{ log.type }}</span>
+            <span class="log-method" :class="log.method.toLowerCase()">{{ log.method }}</span>
             <span class="log-direction">[{{ log.direction === 'sent' ? '→' : '←' }}]</span>
-            <pre class="log-payload">{{ JSON.stringify(log.payload, null, 2) }}</pre>
+            <pre class="log-payload">{{ JSON.stringify(log.params, null, 2) }}</pre>
           </div>
         </div>
       </div>
@@ -624,7 +624,7 @@ onUnmounted(() => {
   margin-right: 8px;
 }
 
-.log-type {
+.log-method {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 4px;
@@ -633,47 +633,47 @@ onUnmounted(() => {
   margin-right: 8px;
 }
 
-.log-type.request {
+.log-method.request {
   background: #4a90d9;
   color: white;
 }
 
-.log-type.response {
+.log-method.response {
   background: #4ec9b0;
   color: #1e1e1e;
 }
 
-.log-type.command {
+.log-method.command {
   background: #d4a90d;
   color: #1e1e1e;
 }
 
-.log-type.error {
+.log-method.error {
   background: #d32f2f;
   color: white;
 }
 
-.log-type.system {
+.log-method.system {
   background: #7c4dff;
   color: white;
 }
 
-.log-type.ping {
+.log-method.ping {
   background: #0fbf3b;
   color: white;
 }
 
-.log-type.echo {
+.log-method.echo {
   background: #19368d;
   color: white;
 }
 
-.log-type.get_data {
+.log-method.get_data {
   background: #4ec9b0;
   color: #1e1e1e;
 }
 
-.log-type.get_time {
+.log-method.get_time {
   background: #eb3838;
   color: #1e1e1e;
 }

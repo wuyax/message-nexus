@@ -34,7 +34,7 @@ nexus.onCommand((data) => {
   addLog('COMMAND', data)
 
   // Reply with success
-  nexus.reply(data.id, { received: true, echo: data.payload ?? data })
+  nexus.reply(String(data.payload.id), { received: true, echo: data.payload ?? data })
 })
 
 // Listen for errors

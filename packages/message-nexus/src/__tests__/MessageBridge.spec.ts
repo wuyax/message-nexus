@@ -24,15 +24,18 @@ describe('MessageNexus', () => {
       vi.useFakeTimers()
       const sendSpy = vi.spyOn(mockDriver, 'send')
 
-      const promise = bridge.request({ type: 'TEST_ACTION', payload: { data: 'test' } })
+      const promise = bridge.request({ method: 'TEST_ACTION', params: { data: 'test' } })
 
       expect(sendSpy).toHaveBeenCalledWith({
-        id: expect.any(String),
-        type: 'TEST_ACTION',
-        payload: { data: 'test' },
         from: bridge.instanceId,
         to: undefined,
         metadata: { timestamp: expect.any(Number) },
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_ACTION',
+          params: { data: 'test' },
+          id: expect.any(String),
+        },
       })
 
       vi.advanceTimersByTime(bridge.timeout + 1000)
@@ -47,12 +50,15 @@ describe('MessageNexus', () => {
       const promise = bridge.request('TEST_ACTION')
 
       expect(sendSpy).toHaveBeenCalledWith({
-        id: expect.any(String),
-        type: 'TEST_ACTION',
-        payload: undefined,
         from: bridge.instanceId,
         to: undefined,
         metadata: { timestamp: expect.any(Number) },
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_ACTION',
+          params: undefined,
+          id: expect.any(String),
+        },
       })
 
       vi.advanceTimersByTime(bridge.timeout + 1000)
@@ -62,7 +68,7 @@ describe('MessageNexus', () => {
 
     it('should timeout after specified time', async () => {
       vi.useFakeTimers()
-      const promise = bridge.request({ type: 'TEST_ACTION', timeout: 100 })
+      const promise = bridge.request({ method: 'TEST_ACTION', timeout: 100 })
 
       vi.advanceTimersByTime(100)
 
@@ -77,17 +83,23 @@ describe('MessageNexus', () => {
       const unregister = bridge.onCommand(handler)
 
       mockDriver.onMessage?.({
-        id: 'test-id',
-        type: 'TEST_COMMAND',
-        payload: { data: 'test' },
         from: 'sender',
-      })
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_COMMAND',
+          params: { data: 'test' },
+          id: 'test-id',
+        },
+      } as any)
 
       expect(handler).toHaveBeenCalledWith({
-        id: 'test-id',
-        type: 'TEST_COMMAND',
-        payload: { data: 'test' },
         from: 'sender',
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_COMMAND',
+          params: { data: 'test' },
+          id: 'test-id',
+        },
       })
 
       unregister()
@@ -100,11 +112,14 @@ describe('MessageNexus', () => {
       unregister()
 
       mockDriver.onMessage?.({
-        id: 'test-id',
-        type: 'TEST_COMMAND',
-        payload: { data: 'test' },
         from: 'sender',
-      })
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_COMMAND',
+          params: { data: 'test' },
+          id: 'test-id',
+        },
+      } as any)
 
       expect(handler).not.toHaveBeenCalled()
     })
@@ -115,22 +130,25 @@ describe('MessageNexus', () => {
       const sendSpy = vi.spyOn(mockDriver, 'send')
 
       mockDriver.onMessage?.({
-        id: 'test-id',
-        type: 'TEST_COMMAND',
-        payload: { data: 'test' },
         from: 'sender',
-      })
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_COMMAND',
+          params: { data: 'test' },
+          id: 'test-id',
+        },
+      } as any)
 
       bridge.reply('test-id', { result: 'success' })
 
       expect(sendSpy).toHaveBeenCalledWith({
-        id: 'test-id',
-        type: 'TEST_COMMAND_RESPONSE',
-        payload: { result: 'success' },
-        error: undefined,
-        isResponse: true,
         from: bridge.instanceId,
         to: 'sender',
+        payload: {
+          jsonrpc: '2.0',
+          id: 'test-id',
+          result: { result: 'success' },
+        },
       })
     })
 
@@ -145,15 +163,23 @@ describe('MessageNexus', () => {
       const responsePayload = { result: 'success' }
 
       const sendSpy = vi.spyOn(mockDriver, 'send')
-      const promise = bridge.request({ type: 'TEST_ACTION', payload: { query: 'test' } })
+      const promise = bridge.request({ method: 'TEST_ACTION', params: { query: 'test' } })
 
       vi.advanceTimersByTime(0)
 
-      const sentMessage = sendSpy.mock.calls[0]?.[0]
-      if (!sentMessage) {
+      const id = Array.from(bridge.pendingTasks.keys())[0]
+      if (!id) {
         throw new Error('Message not sent')
       }
-      bridge.reply(sentMessage.id, responsePayload)
+
+      mockDriver.onMessage?.({
+        from: 'receiver',
+        payload: {
+          jsonrpc: '2.0',
+          id,
+          result: responsePayload,
+        },
+      } as any)
 
       vi.advanceTimersByTime(10)
 
@@ -171,20 +197,20 @@ describe('MessageNexus', () => {
       expect(errorHandler).toHaveBeenCalledWith(expect.any(Error), expect.any(Object))
     })
 
-    it('should reject message without id', () => {
+    it('should reject message without jsonrpc payload', () => {
       const errorHandler = vi.fn()
       bridge.onError(errorHandler)
 
-      mockDriver.onMessage?.({ type: 'TEST', from: 'sender' } as any)
+      mockDriver.onMessage?.({ from: 'sender', payload: { method: 'TEST' } } as any)
 
       expect(errorHandler).toHaveBeenCalledWith(expect.any(Error), expect.any(Object))
     })
 
-    it('should reject message without type', () => {
+    it('should reject message without method or result/error', () => {
       const errorHandler = vi.fn()
       bridge.onError(errorHandler)
 
-      mockDriver.onMessage?.({ id: 'test-id', from: 'sender' } as any)
+      mockDriver.onMessage?.({ from: 'sender', payload: { jsonrpc: '2.0', id: 'test' } } as any)
 
       expect(errorHandler).toHaveBeenCalledWith(expect.any(Error), expect.any(Object))
     })
@@ -219,10 +245,13 @@ describe('MessageNexus', () => {
   describe('memory leak prevention', () => {
     it('should cleanup incomingMessages periodically', () => {
       mockDriver.onMessage?.({
-        id: 'test-id',
-        type: 'TEST_COMMAND',
         from: 'sender',
-      })
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_COMMAND',
+          id: 'test-id',
+        },
+      } as any)
 
       expect(bridge['incomingMessages'].has('test-id')).toBe(true)
 

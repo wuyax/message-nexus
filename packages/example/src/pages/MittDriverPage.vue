@@ -10,7 +10,7 @@ const nexus = new MessageNexus(driver, { instanceId: 'myBridgeId', loggerEnabled
 let messageId = ref<string[]>([])
 nexus.onCommand((data) => {
   console.log(data)
-  messageId.value.push(data.id)
+  messageId.value.push(String(data.payload.id))
 })
 
 function send(id: string) {

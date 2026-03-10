@@ -1,13 +1,31 @@
-export interface Message {
-  id: string
-  type: string
-  payload?: unknown
+export type JsonRpcId = string | number | null
+
+export interface JsonRpcRequest {
+  jsonrpc: '2.0'
+  method: string
+  params?: unknown
+  id?: JsonRpcId
+}
+
+export interface JsonRpcResponse {
+  jsonrpc: '2.0'
+  result?: unknown
+  error?: {
+    code: number
+    message: string
+    data?: unknown
+  }
+  id: JsonRpcId
+}
+
+export interface NexusEnvelope<T = JsonRpcRequest | JsonRpcResponse> {
   from: string
   to?: string
   metadata?: Record<string, unknown>
-  isResponse?: boolean
-  error?: unknown
+  payload: T
 }
+
+export type Message = NexusEnvelope
 
 export default class BaseDriver {
   onMessage: ((data: Message) => void) | null

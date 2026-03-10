@@ -6,9 +6,9 @@ import { useAutoScroll } from '../composables/useAutoScroll'
 
 interface LogEntry {
   time: string
-  type: string
+  method: string
   direction: 'sent' | 'received'
-  payload: unknown
+  params?: unknown
 }
 
 const nexusRef = ref<MessageNexus | null>(null)
@@ -22,12 +22,12 @@ const logListRef = ref<HTMLElement | null>(null)
 
 useAutoScroll(logListRef, logs)
 
-function addLog(type: string, direction: 'sent' | 'received', payload: unknown) {
+function addLog(method: string, direction: 'sent' | 'received', params?: unknown) {
   logs.value.push({
     time: new Date().toLocaleTimeString(),
-    type,
+    method,
     direction,
-    payload,
+    params,
   })
 }
 
@@ -40,8 +40,8 @@ function sendRequest() {
 
     nexusRef.value
       .request({
-        type: 'PING',
-        payload,
+        method: 'PING',
+        params: payload,
       })
       .then((res) => {
         addLog('RESPONSE', 'received', res)
@@ -62,8 +62,8 @@ function sendCommand() {
     const payload = JSON.parse(requestPayload.value)
     addLog('COMMAND', 'sent', payload)
     nexusRef.value.request({
-      type: 'COMMAND',
-      payload,
+      method: 'COMMAND',
+      params: payload,
     })
   } catch (e) {
     addLog('ERROR', 'sent', { error: 'Invalid JSON payload' })
@@ -89,8 +89,8 @@ function reconnect(should_open_new_tab: boolean = true) {
 
   nexus.onCommand((data) => {
     console.log('🚀 ~ reconnect ~ data:', data)
-    addLog(data.type.toUpperCase(), 'received', data)
-    nexus.reply(data.id, { message: 'data received' })
+    addLog(data.payload.method.toUpperCase(), 'received', data)
+    nexus.reply(String(data.payload.id), { message: 'data received' })
   })
 
   nexus.onError((error) => {
@@ -175,9 +175,9 @@ onUnmounted(() => {
           </div>
           <div v-for="(log, index) in logs" :key="index" class="log-item" :class="log.direction">
             <span class="log-time">{{ log.time }}</span>
-            <span class="log-type" :class="log.type.toLowerCase()">{{ log.type }}</span>
+            <span class="log-method" :class="log.method.toLowerCase()">{{ log.method }}</span>
             <span class="log-direction">[{{ log.direction === 'sent' ? '→' : '←' }}]</span>
-            <pre class="log-payload">{{ JSON.stringify(log.payload, null, 2) }}</pre>
+            <pre class="log-payload">{{ JSON.stringify(log.params, null, 2) }}</pre>
           </div>
         </div>
       </div>
@@ -407,7 +407,7 @@ onUnmounted(() => {
   margin-right: 8px;
 }
 
-.log-type {
+.log-method {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 4px;
@@ -416,32 +416,32 @@ onUnmounted(() => {
   margin-right: 8px;
 }
 
-.log-type.request {
+.log-method.request {
   background: #4a90d9;
   color: white;
 }
 
-.log-type.response {
+.log-method.response {
   background: #4ec9b0;
   color: #1e1e1e;
 }
 
-.log-type.command {
+.log-method.command {
   background: #d4a90d;
   color: #1e1e1e;
 }
 
-.log-type.error {
+.log-method.error {
   background: #d32f2f;
   color: white;
 }
 
-.log-type.system {
+.log-method.system {
   background: #7c4dff;
   color: white;
 }
 
-.log-type.ping {
+.log-method.ping {
   background: #4a90d9;
   color: white;
 }

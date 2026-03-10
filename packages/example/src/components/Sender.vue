@@ -10,8 +10,8 @@ const nexus = new MessageNexus(driver)
 function send() {
   nexus
     .request({
-      type: 'anov.create',
-      payload: { name: 'test' + Math.random() },
+      method: 'anov.create',
+      params: { name: 'test' + Math.random() },
       to: 'myBridgeId',
       retryCount: 3,
       retryDelay: 1000,
