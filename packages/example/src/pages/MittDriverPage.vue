@@ -30,107 +30,232 @@ onUnmounted(() => {
 <template>
   <div class="mitt-driver-page">
     <div class="page-header">
-      <h1>MittDriver Example</h1>
+      <h1>MittDriver Module</h1>
       <p class="description">
-        Demonstrates in-process communication using MittDriver and the event emitter pattern.
+        Demonstrates in-process communication using MittDriver and the event emitter pattern. Local
+        system bound.
       </p>
     </div>
 
-    <section class="demo-section">
-      <h2>Message Sender</h2>
-      <Sender />
-    </section>
+    <div class="grid-layout">
+      <section class="demo-section component-card">
+        <div class="card-header">
+          <h2>Message Sender</h2>
+          <span class="status-indicator">Active</span>
+        </div>
+        <div class="card-body">
+          <Sender />
+        </div>
+      </section>
 
-    <section class="demo-section">
-      <h2>Received Messages</h2>
-      <div v-if="messageId.length === 0" class="empty-state">
-        No messages received yet. Use the Sender above to send a message.
-      </div>
-      <div v-else class="message-list">
-        <p v-for="id in messageId" :key="id" class="message-item">
-          <span class="message-id">Message ID: {{ id }}</span>
-          <button class="reply-btn" @click="send(id)">Reply</button>
-        </p>
-      </div>
-    </section>
+      <section class="demo-section component-card">
+        <div class="card-header">
+          <h2>Incoming Queue</h2>
+          <span class="status-indicator wait">Listening</span>
+        </div>
+        <div class="card-body">
+          <div v-if="messageId.length === 0" class="empty-state">
+            <span class="pulse"></span>
+            Awaiting transmission...
+          </div>
+          <div v-else class="message-list">
+            <div v-for="id in messageId" :key="id" class="message-item">
+              <span class="message-id">MSG_ID: {{ id }}</span>
+              <button class="action-btn" @click="send(id)">Acknowledge</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .mitt-driver-page {
-  max-width: 800px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .page-header {
-  margin-bottom: 32px;
+  margin-bottom: 40px;
+  border-left: 4px solid var(--accent);
+  padding-left: 20px;
 }
 
 .page-header h1 {
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: #333;
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
   margin-bottom: 8px;
+
+  letter-spacing: 2px;
 }
 
 .description {
-  color: #666;
-  line-height: 1.6;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
 }
 
-.demo-section {
-  margin-bottom: 32px;
-  background: white;
-  border-radius: 8px;
-  padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+.grid-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
 }
 
-.demo-section h2 {
-  font-size: 1.25rem;
+.component-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  position: relative;
+}
+
+.component-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border-top: 2px solid var(--accent);
+  border-left: 2px solid var(--accent);
+}
+
+.component-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-bottom: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.card-header h2 {
+  font-size: 1.2rem;
   font-weight: 600;
-  color: #333;
-  margin-bottom: 16px;
+  color: var(--text-primary);
+
+  letter-spacing: 1px;
+}
+
+.status-indicator {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--success);
+  padding: 2px 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-indicator.wait {
+  color: var(--accent);
+  background: rgba(249, 115, 22, 0.1);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.card-body {
+  padding: 24px;
 }
 
 .message-item {
-  margin-bottom: 10px;
-}
-
-.message-id {
-  margin-right: 10px;
-  font-family: monospace;
-}
-
-.reply-btn {
-  margin-left: 10px;
-  cursor: pointer;
-  padding: 5px 10px;
-  border-radius: 5px;
-  border: 1px solid #ccc;
-  background: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--success);
   transition: all 0.2s;
 }
 
-.reply-btn:hover {
-  background-color: #f5f5f5;
+.message-item:hover {
+  background: var(--bg-panel-hover);
+  border-color: var(--border-focus);
 }
 
-.reply-btn:active {
-  background-color: #ccc;
+.message-id {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.action-btn {
+  cursor: pointer;
+  padding: 6px 16px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: none;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.4);
+}
+
+.action-btn:active {
+  transform: translateY(1px);
 }
 
 .empty-state {
-  color: #6a9955;
-  text-align: center;
-  padding: 20px;
-  background: #f8f8f8;
-  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  padding: 40px 20px;
+  background: var(--bg-color);
+  border: 1px dashed var(--border-color);
+
+  font-size: 0.9rem;
+  letter-spacing: 1px;
+}
+
+.pulse {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background-color: var(--accent);
+  border-radius: 50%;
+  animation: pulse-anim 2s infinite;
+}
+
+@keyframes pulse-anim {
+  0% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(249, 115, 22, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+  }
 }
 
 .message-list {
-  background: #f8f8f8;
-  border-radius: 6px;
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .grid-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

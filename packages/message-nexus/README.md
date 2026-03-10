@@ -42,6 +42,9 @@ const nexus = new MessageNexus(driver)
 const response = await nexus.request('GET_DATA', { id: 123 })
 console.log(response)
 
+// Send one-way notification
+nexus.notify('UPDATE_STATUS', { status: 'active' })
+
 // Listen for commands
 const receiverDriver = new MittDriver(emitter)
 const receiverNexus = new MessageNexus(receiverDriver)
@@ -49,6 +52,11 @@ const unsubscribe = receiverNexus.onCommand((data) => {
   if (data.payload.method === 'GET_DATA') {
     receiverNexus.reply(data.payload.id as string, { name: 'test', value: 42 })
   }
+})
+
+// Listen for notifications
+const unsubscribeNotify = receiverNexus.onNotify((data) => {
+  console.log('Notification received:', data.payload.method)
 })
 ```
 
@@ -205,6 +213,37 @@ const result = await nexus.request({
 })
 ```
 
+##### notify()
+
+Send a one-way notification (Fire-and-Forget). Does not wait for a response and does not generate an ID. Complies with JSON-RPC 2.0 Notification specification.
+
+```typescript
+nexus.notify(methodOrOptions: string | Omit<RequestOptions, 'timeout' | 'retryCount' | 'retryDelay'>): void
+```
+
+**Options:**
+
+| Parameter | Type                    | Required | Description         |
+| --------- | ----------------------- | -------- | ------------------- |
+| method    | string                  | Yes      | Notification method |
+| params    | unknown                 | No       | Notification data   |
+| to        | string                  | No       | Target instance ID  |
+| metadata  | Record<string, unknown> | No       | Metadata            |
+
+**Example:**
+
+```typescript
+// Simple notification
+nexus.notify('HEARTBEAT')
+
+// Full configuration
+nexus.notify({
+  method: 'UPDATE_STATE',
+  params: { state: 'ready' },
+  to: 'target-instance',
+})
+```
+
 ##### onCommand()
 
 Register message handler.
@@ -224,6 +263,27 @@ const unsubscribe = nexus.onCommand((data) => {
   if (data.payload.method === 'ECHO') {
     nexus.reply(data.payload.id as string, { echoed: data.payload.params })
   }
+})
+
+// Unsubscribe
+unsubscribe()
+```
+
+##### onNotify()
+
+Register notification handler (for incoming `notify` calls).
+
+```typescript
+nexus.onNotify(handler: (data: NotifyMessage) => void): () => void
+```
+
+**Return Value:** Unsubscribe function
+
+**Example:**
+
+```typescript
+const unsubscribe = nexus.onNotify((data) => {
+  console.log('Notification received:', data.payload.method, data.payload.params)
 })
 
 // Unsubscribe

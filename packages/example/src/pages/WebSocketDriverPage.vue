@@ -34,7 +34,7 @@ const metrics = ref<Metrics>({
 
 const wsUrl = ref('ws://localhost:8080')
 const isConnected = ref(false)
-const requestPayload = ref('{"message": "Hello from client!"}')
+const requestPayload = ref('{\n  "message": "Hello from client!"\n}')
 const responseData = ref<unknown>(null)
 const connectionStatus = ref('disconnected')
 const reconnectEnabled = ref(true)
@@ -69,7 +69,7 @@ function connect() {
   disconnect()
 
   connectionStatus.value = 'connecting'
-  addLog('SYSTEM', 'sent', { message: `Connecting to ${wsUrl.value}...` })
+  addLog('System', 'sent', { message: `Connecting to ${wsUrl.value}...` })
 
   try {
     const driver = new WebSocketDriver({
@@ -88,7 +88,7 @@ function connect() {
     })
 
     nexus.onError((error) => {
-      addLog('ERROR', 'received', { error: error.message })
+      addLog('Error', 'received', { error: error.message })
       updateMetrics()
     })
 
@@ -96,15 +96,14 @@ function connect() {
       updateMetrics()
     })
 
-    // Wait for connection to establish
     setTimeout(() => {
       isConnected.value = true
       connectionStatus.value = 'connected'
-      addLog('SYSTEM', 'received', { message: 'Connected to WebSocket server' })
+      addLog('System', 'received', { message: 'Connected to WebSocket server' })
     }, 500)
   } catch (error) {
     connectionStatus.value = 'error'
-    addLog('ERROR', 'received', { error: (error as Error).message })
+    addLog('Error', 'received', { error: (error as Error).message })
   }
 }
 
@@ -116,7 +115,7 @@ function disconnect() {
   driverRef.value = null
   isConnected.value = false
   connectionStatus.value = 'disconnected'
-  addLog('SYSTEM', 'sent', { message: 'Disconnected from WebSocket server' })
+  addLog('System', 'sent', { message: 'Disconnected from WebSocket server' })
 }
 
 function sendRequest() {
@@ -127,7 +126,7 @@ function sendRequest() {
 
   try {
     const payload = JSON.parse(requestPayload.value)
-    addLog('REQUEST', 'sent', payload)
+    addLog('Request', 'sent', payload)
 
     nexusRef.value
       .request({
@@ -135,33 +134,33 @@ function sendRequest() {
         params: payload,
       })
       .then((res) => {
-        addLog('RESPONSE', 'received', res)
+        addLog('Response', 'received', res)
         responseData.value = res
         updateMetrics()
       })
       .catch((err) => {
-        addLog('ERROR', 'received', { error: err.message })
+        addLog('Error', 'received', { error: err.message })
         updateMetrics()
       })
   } catch (e) {
-    addLog('ERROR', 'sent', { error: 'Invalid JSON payload' })
+    addLog('Error', 'sent', { error: 'Invalid JSON payload' })
   }
 }
 
 function sendGetTime() {
   if (!nexusRef.value) return
 
-  addLog('REQUEST', 'sent', { method: 'GET_TIME' })
+  addLog('Request', 'sent', { method: 'GET_TIME' })
 
   nexusRef.value
     .request({ method: 'GET_TIME' })
     .then((res) => {
-      addLog('RESPONSE', 'received', res)
+      addLog('Response', 'received', res)
       responseData.value = res
       updateMetrics()
     })
     .catch((err) => {
-      addLog('ERROR', 'received', { error: err.message })
+      addLog('Error', 'received', { error: err.message })
     })
 }
 
@@ -169,7 +168,7 @@ function sendEcho() {
   if (!nexusRef.value) return
 
   const payload = { message: 'Hello Echo!', timestamp: Date.now() }
-  addLog('REQUEST', 'sent', { method: 'ECHO', params: payload, payload })
+  addLog('Request', 'sent', { method: 'ECHO', params: payload, payload })
 
   nexusRef.value
     .request({
@@ -177,29 +176,29 @@ function sendEcho() {
       params: payload,
     })
     .then((res) => {
-      addLog('RESPONSE', 'received', res)
+      addLog('Response', 'received', res)
       responseData.value = res
       updateMetrics()
     })
     .catch((err) => {
-      addLog('ERROR', 'received', { error: err.message })
+      addLog('Error', 'received', { error: err.message })
     })
 }
 
 function sendGetData() {
   if (!nexusRef.value) return
 
-  addLog('REQUEST', 'sent', { method: 'GET_DATA' })
+  addLog('Request', 'sent', { method: 'GET_DATA' })
 
   nexusRef.value
     .request({ method: 'GET_DATA' })
     .then((res) => {
-      addLog('RESPONSE', 'received', res)
+      addLog('Response', 'received', res)
       responseData.value = res
       updateMetrics()
     })
     .catch((err) => {
-      addLog('ERROR', 'received', { error: err.message })
+      addLog('Error', 'received', { error: err.message })
     })
 }
 
@@ -209,7 +208,6 @@ function clearLogs() {
 }
 
 onMounted(() => {
-  // Auto-connect on mount
   connect()
 })
 
@@ -221,95 +219,120 @@ onUnmounted(() => {
 <template>
   <div class="websocket-page">
     <div class="page-header">
-      <h1>WebSocketDriver Example</h1>
+      <h1>WebSocketDriver</h1>
       <p class="description">
-        Demonstrates WebSocket communication using WebSocketDriver. Connect to a WebSocket server
-        and test request-response patterns with automatic reconnection support.
+        Demonstrates WebSocket communication using WebSocketDriver. Real-time, bidirectional
+        connection with the network.
       </p>
     </div>
 
-    <div class="card">
-      <div class="connection-section">
-        <h3>Connection Settings</h3>
-        <div class="connection-controls">
-          <div class="input-group">
-            <label>WebSocket URL:</label>
-            <input
-              v-model="wsUrl"
-              type="text"
-              class="url-input"
-              :disabled="isConnected"
-              placeholder="ws://localhost:8080"
-            />
+    <div class="metrics-grid">
+      <div class="metric">
+        <span class="metric-value">{{ metrics.messagesSent }}</span>
+        <span class="metric-label">TX</span>
+      </div>
+      <div class="metric">
+        <span class="metric-value">{{ metrics.messagesReceived }}</span>
+        <span class="metric-label">RX</span>
+      </div>
+      <div class="metric">
+        <span class="metric-value" :class="{ 'error-text': metrics.messagesFailed > 0 }">{{
+          metrics.messagesFailed
+        }}</span>
+        <span class="metric-label">FAIL</span>
+      </div>
+      <div class="metric">
+        <span class="metric-value">{{ metrics.averageLatency.toFixed(0) }}ms</span>
+        <span class="metric-label">LATENCY</span>
+      </div>
+    </div>
+
+    <div class="grid-layout">
+      <!-- Left Column: Controls -->
+      <div class="column">
+        <div class="component-card">
+          <div class="card-header">
+            <h2>Uplink Configuration</h2>
+            <span class="status-indicator" :class="connectionStatus">
+              {{ connectionStatus }}
+            </span>
           </div>
-          <div class="input-group checkbox-group">
-            <label>
-              <input v-model="reconnectEnabled" type="checkbox" :disabled="isConnected" />
-              Enable Auto-Reconnect
-            </label>
-          </div>
-          <div class="button-group">
-            <button v-if="!isConnected" class="btn primary" @click="connect">Connect</button>
-            <button v-else class="btn danger" @click="disconnect">Disconnect</button>
+
+          <div class="card-body">
+            <div class="control-group">
+              <label>Socket URL:</label>
+              <input
+                v-model="wsUrl"
+                type="text"
+                class="payload-input"
+                :disabled="isConnected"
+                placeholder="ws://localhost:8080"
+              />
+            </div>
+
+            <div class="control-group checkbox-group">
+              <label class="checkbox-container">
+                <input v-model="reconnectEnabled" type="checkbox" :disabled="isConnected" />
+                <span class="checkmark"></span>
+                ENABLE AUTO-REConnect
+              </label>
+            </div>
+
+            <div class="button-group">
+              <button v-if="!isConnected" class="action-btn primary" @click="connect">
+                Establish Link
+              </button>
+              <button v-else class="action-btn danger" @click="disconnect">Disconnect</button>
+            </div>
           </div>
         </div>
-        <div class="status-bar">
-          <span class="status-label">Status:</span>
-          <span class="status-badge" :class="connectionStatus">{{ connectionStatus }}</span>
+
+        <div class="component-card">
+          <div class="card-header">
+            <h2>Command Interface</h2>
+          </div>
+          <div class="card-body">
+            <div class="button-grid">
+              <button class="action-btn outline" @click="sendRequest" :disabled="!isConnected">
+                Tx Ping
+              </button>
+              <button class="action-btn outline" @click="sendGetTime" :disabled="!isConnected">
+                Req Time
+              </button>
+              <button class="action-btn outline" @click="sendEcho" :disabled="!isConnected">
+                Test Echo
+              </button>
+              <button class="action-btn outline" @click="sendGetData" :disabled="!isConnected">
+                Req Data
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="controls">
-        <h3>Quick Actions</h3>
-        <div class="button-group">
-          <button class="btn" @click="sendRequest" :disabled="!isConnected">Send PING</button>
-          <button class="btn" @click="sendGetTime" :disabled="!isConnected">Get Time</button>
-          <button class="btn" @click="sendEcho" :disabled="!isConnected">Echo Test</button>
-          <button class="btn" @click="sendGetData" :disabled="!isConnected">Get Data</button>
-        </div>
-      </div>
+      <!-- Right Column: Logs -->
+      <div class="column">
+        <div class="component-card terminal-card">
+          <div class="card-header terminal-header">
+            <h2>System Log</h2>
+            <button class="action-btn small" @click="clearLogs">Clear</button>
+          </div>
 
-      <div class="metrics-section">
-        <h3>Metrics</h3>
-        <div class="metrics-grid">
-          <div class="metric">
-            <span class="metric-value">{{ metrics.messagesSent }}</span>
-            <span class="metric-label">Sent</span>
-          </div>
-          <div class="metric">
-            <span class="metric-value">{{ metrics.messagesReceived }}</span>
-            <span class="metric-label">Received</span>
-          </div>
-          <div class="metric">
-            <span class="metric-value">{{ metrics.messagesFailed }}</span>
-            <span class="metric-label">Failed</span>
-          </div>
-          <div class="metric">
-            <span class="metric-value">{{ metrics.averageLatency.toFixed(0) }}ms</span>
-            <span class="metric-label">Avg Latency</span>
-          </div>
-        </div>
-      </div>
+          <div ref="logListRef" class="terminal-body">
+            <div v-if="logs.length === 0" class="empty-state">
+              > UPLINK TERMINAL<br />
+              > WAITING FOR DATA STREAM...<br />
+              <span class="cursor">_</span>
+            </div>
 
-      <div v-if="responseData" class="response-section">
-        <div class="response-header">Last Response:</div>
-        <pre class="response-data">{{ JSON.stringify(responseData, null, 2) }}</pre>
-      </div>
-
-      <div class="log-section">
-        <div class="log-header">
-          <span>Communication Log</span>
-          <button class="btn small secondary" @click="clearLogs">Clear</button>
-        </div>
-        <div ref="logListRef" class="log-list">
-          <div v-if="logs.length === 0" class="empty-state">
-            No messages yet. Try sending a request.
-          </div>
-          <div v-for="(log, index) in logs" :key="index" class="log-item" :class="log.direction">
-            <span class="log-time">{{ log.time }}</span>
-            <span class="log-method" :class="log.method.toLowerCase()">{{ log.method }}</span>
-            <span class="log-direction">[{{ log.direction === 'sent' ? '→' : '←' }}]</span>
-            <pre class="log-payload">{{ JSON.stringify(log.params, null, 2) }}</pre>
+            <div v-for="(log, index) in logs" :key="index" class="log-item" :class="log.direction">
+              <div class="log-meta">
+                <span class="log-time">[{{ log.time }}]</span>
+                <span class="log-direction">{{ log.direction === 'sent' ? 'TX' : 'RX' }}</span>
+                <span class="log-method" :class="log.method.toLowerCase()">{{ log.method }}</span>
+              </div>
+              <pre class="log-payload">{{ JSON.stringify(log.params, null, 2) }}</pre>
+            </div>
           </div>
         </div>
       </div>
@@ -319,386 +342,459 @@ onUnmounted(() => {
 
 <style scoped>
 .websocket-page {
-  max-width: 800px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .page-header {
-  margin-bottom: 32px;
+  margin-bottom: 30px;
+  border-left: 4px solid var(--accent);
+  padding-left: 20px;
 }
 
 .page-header h1 {
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: #333;
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
   margin-bottom: 8px;
+
+  letter-spacing: 2px;
 }
 
 .description {
-  color: #666;
-  line-height: 1.6;
-}
-
-.card {
-  background: white;
-  border-radius: 8px;
-  padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.connection-section {
-  margin-bottom: 24px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid #eee;
-}
-
-.connection-section h3,
-.controls h3,
-.metrics-section h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 16px;
-}
-
-.connection-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: flex-end;
-}
-
-.input-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.input-group label {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: #666;
-}
-
-.url-input {
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  width: 280px;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-}
-
-.url-input:focus {
-  outline: none;
-  border-color: #4a90d9;
-  box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.1);
-}
-
-.url-input:disabled {
-  background: #f5f5f5;
-  cursor: not-allowed;
-}
-
-.checkbox-group {
-  flex-direction: row;
-  align-items: center;
-}
-
-.checkbox-group label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.checkbox-group input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-}
-
-.button-group {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.btn {
-  padding: 10px 20px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
-  color: #333;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.2s;
-}
-
-.btn:hover:not(:disabled) {
-  background: #f5f5f5;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn.primary {
-  background: #4a90d9;
-  color: white;
-  border-color: #4a90d9;
-}
-
-.btn.primary:hover:not(:disabled) {
-  background: #3a7fc8;
-}
-
-.btn.danger {
-  background: #d32f2f;
-  color: white;
-  border-color: #d32f2f;
-}
-
-.btn.danger:hover:not(:disabled) {
-  background: #b71c1c;
-}
-
-.btn.secondary {
-  background: #f0f0f0;
-}
-
-.btn.small {
-  padding: 6px 12px;
-  font-size: 0.8rem;
-}
-
-.status-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.status-label {
-  font-size: 0.85rem;
-  color: #666;
-}
-
-.status-badge {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  text-transform: capitalize;
-}
-
-.status-badge.connected {
-  background: #e8f5e9;
-  color: #2e7d32;
-}
-
-.status-badge.connecting {
-  background: #fff3e0;
-  color: #e65100;
-}
-
-.status-badge.disconnected {
-  background: #f5f5f5;
-  color: #666;
-}
-
-.status-badge.error {
-  background: #ffebee;
-  color: #c62828;
-}
-
-.controls {
-  margin-bottom: 24px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid #eee;
-}
-
-.metrics-section {
-  margin-bottom: 24px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid #eee;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
 }
 
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
+  margin-bottom: 24px;
 }
 
 .metric {
-  text-align: center;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
   padding: 16px;
-  background: #f8f8f8;
-  border-radius: 8px;
+  text-align: center;
+  position: relative;
+}
+
+.metric::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border: 1px solid var(--border-color);
+  pointer-events: none;
 }
 
 .metric-value {
   display: block;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #333;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-family: var(--font-mono);
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.metric-value.error-text {
+  color: var(--danger);
 }
 
 .metric-label {
   display: block;
+  font-family: var(--font-ui);
   font-size: 0.8rem;
-  color: #666;
+  font-weight: 700;
+  color: var(--text-secondary);
   margin-top: 4px;
+  letter-spacing: 2px;
 }
 
-.response-section {
-  margin: 20px 0;
-  padding: 16px;
-  background: #f0f9f0;
-  border-radius: 6px;
-  border: 1px solid #c8e6c9;
+.grid-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 24px;
 }
 
-.response-header {
-  font-weight: 600;
-  color: #2e7d32;
-  margin-bottom: 8px;
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
-.response-data {
-  margin: 0;
-  padding: 12px;
-  background: white;
-  border-radius: 4px;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 0.85rem;
-  overflow-x: auto;
+.component-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
-.log-section {
-  margin-top: 20px;
+.component-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border-top: 2px solid var(--accent);
+  border-left: 2px solid var(--accent);
 }
 
-.log-header {
+.component-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-bottom: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+.card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-  font-weight: 600;
-  color: #333;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.2);
 }
 
-.log-list {
-  background: #1e1e1e;
-  border-radius: 6px;
+.card-header h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-primary);
+
+  letter-spacing: 1px;
+}
+
+.status-indicator {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+}
+
+.status-indicator.connected {
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.status-indicator.connecting {
+  color: var(--accent);
+  background: rgba(249, 115, 22, 0.1);
+}
+
+.status-indicator.disconnected {
+  color: var(--text-secondary);
+  background: rgba(136, 136, 136, 0.1);
+}
+
+.status-indicator.error {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.card-body {
+  padding: 24px;
+}
+
+.control-group {
+  margin-bottom: 20px;
+}
+
+.control-group label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+.payload-input {
+  width: 100%;
   padding: 12px;
-  max-height: 400px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.payload-input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.2);
+}
+
+.payload-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.checkbox-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-container input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+.checkmark {
+  height: 16px;
+  width: 16px;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  position: relative;
+}
+
+.checkbox-container:hover input ~ .checkmark {
+  border-color: var(--accent);
+}
+
+.checkbox-container input:checked ~ .checkmark {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkmark:after {
+  content: '';
+  position: absolute;
+  display: none;
+}
+
+.checkbox-container input:checked ~ .checkmark:after {
+  display: block;
+}
+
+.checkbox-container .checkmark:after {
+  left: 5px;
+  top: 2px;
+  width: 3px;
+  height: 8px;
+  border: solid var(--bg-color);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.button-group,
+.button-grid {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.button-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.action-btn {
+  cursor: pointer;
+  padding: 10px 16px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-primary);
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  font-size: 0.85rem;
+  transition: all 0.2s;
+
+  flex: 1;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: var(--bg-panel-hover);
+  border-color: var(--border-focus);
+}
+
+.action-btn.primary {
+  color: var(--accent-text);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.action-btn.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.4);
+}
+
+.action-btn.danger {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.action-btn.danger:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.action-btn.outline {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.action-btn.outline:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-color);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.action-btn.small {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  flex: 0;
+}
+
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+.terminal-card {
+  flex: 1;
+  min-height: 500px;
+}
+
+.terminal-body {
+  background: var(--log-bg);
+  padding: 16px;
+  flex: 1;
   overflow-y: auto;
+  font-family: var(--font-mono);
+  border-top: 1px solid var(--border-color);
+  max-height: 600px;
+}
+
+.empty-state {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.8;
+}
+
+.cursor {
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 
 .log-item {
-  padding: 8px;
-  margin-bottom: 8px;
-  border-radius: 4px;
-  background: #2d2d2d;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--log-border);
 }
 
 .log-item:last-child {
+  border-bottom: none;
   margin-bottom: 0;
+  padding-bottom: 0;
 }
 
-.log-item.sent {
-  border-left: 3px solid #4a90d9;
-}
-
-.log-item.received {
-  border-left: 3px solid #4ec9b0;
+.log-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
 }
 
 .log-time {
   color: #569cd6;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 0.8rem;
-  margin-right: 8px;
-}
-
-.log-method {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-right: 8px;
-}
-
-.log-method.request {
-  background: #4a90d9;
-  color: white;
-}
-
-.log-method.response {
-  background: #4ec9b0;
-  color: #1e1e1e;
-}
-
-.log-method.command {
-  background: #d4a90d;
-  color: #1e1e1e;
-}
-
-.log-method.error {
-  background: #d32f2f;
-  color: white;
-}
-
-.log-method.system {
-  background: #7c4dff;
-  color: white;
-}
-
-.log-method.ping {
-  background: #0fbf3b;
-  color: white;
-}
-
-.log-method.echo {
-  background: #19368d;
-  color: white;
-}
-
-.log-method.get_data {
-  background: #4ec9b0;
-  color: #1e1e1e;
-}
-
-.log-method.get_time {
-  background: #eb3838;
-  color: #1e1e1e;
 }
 
 .log-direction {
-  color: #888;
-  margin-right: 8px;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.log-item.sent .log-direction {
+  color: var(--accent);
+}
+
+.log-item.received .log-direction {
+  color: var(--success);
+}
+
+.log-method {
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: #333;
+  color: #fff;
+}
+
+.log-method.request {
+  background: #005f87;
+}
+.log-method.response {
+  background: #00875f;
+}
+.log-method.command {
+  background: #875f00;
+}
+.log-method.error {
+  background: #870000;
+}
+.log-method.system {
+  background: #5f0087;
+}
+.log-method.ping {
+  background: #4ec9b0;
+  color: #000;
+}
+.log-method.get_time {
+  background: #d4a90d;
+  color: #000;
+}
+.log-method.echo {
+  background: #a200ff;
+  color: #fff;
+}
+.log-method.get_data {
+  background: #ff5500;
+  color: #000;
 }
 
 .log-payload {
-  margin: 8px 0 0 0;
-  padding: 8px;
-  background: #1a1a1a;
-  border-radius: 4px;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 0.8rem;
+  margin: 0;
   color: #d4d4d4;
-  overflow-x: auto;
+  font-size: 0.85rem;
   white-space: pre-wrap;
   word-break: break-all;
+  padding-left: 12px;
+  border-left: 2px solid #333;
 }
 
-.empty-state {
-  color: #6a9955;
-  text-align: center;
-  padding: 20px;
+@media (max-width: 1024px) {
+  .grid-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

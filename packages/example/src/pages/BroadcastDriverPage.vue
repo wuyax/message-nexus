@@ -13,7 +13,7 @@ interface LogEntry {
 
 const nexusRef = ref<MessageNexus | null>(null)
 const logs = ref<LogEntry[]>([])
-const requestPayload = ref('{"message": "Hello from BroadcastChannel!"}')
+const requestPayload = ref('{\n  "message": "Hello from BroadcastChannel!"\n}')
 const responseData = ref<unknown>(null)
 const channelName = ref('message-nexus-demo')
 const isConnected = ref(false)
@@ -36,7 +36,7 @@ function sendRequest() {
 
   try {
     const payload = JSON.parse(requestPayload.value)
-    addLog('REQUEST', 'sent', payload)
+    addLog('Request', 'sent', payload)
 
     nexusRef.value
       .request({
@@ -44,14 +44,14 @@ function sendRequest() {
         params: payload,
       })
       .then((res) => {
-        addLog('RESPONSE', 'received', res)
+        addLog('Response', 'received', res)
         responseData.value = res
       })
       .catch((err) => {
-        addLog('ERROR', 'received', { error: err.message })
+        addLog('Error', 'received', { error: err.message })
       })
   } catch (e) {
-    addLog('ERROR', 'sent', { error: 'Invalid JSON payload' })
+    addLog('Error', 'sent', { error: 'Invalid JSON payload' })
   }
 }
 
@@ -60,13 +60,13 @@ function sendCommand() {
 
   try {
     const payload = JSON.parse(requestPayload.value)
-    addLog('COMMAND', 'sent', payload)
-    nexusRef.value.request({
-      method: 'COMMAND',
+    addLog('Notify', 'sent', payload)
+    nexusRef.value.notify({
+      method: 'Notify',
       params: payload,
     })
   } catch (e) {
-    addLog('ERROR', 'sent', { error: 'Invalid JSON payload' })
+    addLog('Error', 'sent', { error: 'Invalid JSON payload' })
   }
 }
 
@@ -87,18 +87,23 @@ function reconnect(should_open_new_tab: boolean = true) {
   const nexus = new MessageNexus(driver)
   nexusRef.value = nexus
 
+  nexus.onNotify((data) => {
+    console.log('🚀 ~ reconnect ~ notify:', data)
+    addLog(data.payload.method, 'received', data)
+  })
+
   nexus.onCommand((data) => {
     console.log('🚀 ~ reconnect ~ data:', data)
-    addLog(data.payload.method.toUpperCase(), 'received', data)
+    addLog(data.payload.method, 'received', data)
     nexus.reply(String(data.payload.id), { message: 'data received' })
   })
 
   nexus.onError((error) => {
-    addLog('ERROR', 'received', { error: error.message })
+    addLog('Error', 'received', { error: error.message })
   })
 
   isConnected.value = true
-  addLog('SYSTEM', 'received', { message: `Connected to channel: ${channelName.value}` })
+  addLog('System', 'received', { message: `Connected to channel: ${channelName.value}` })
 }
 
 onMounted(() => {
@@ -120,64 +125,96 @@ onUnmounted(() => {
 <template>
   <div class="broadcast-page">
     <div class="page-header">
-      <h1>BroadcastDriver Example</h1>
+      <h1>BroadcastDriver</h1>
       <p class="description">
-        Demonstrates cross-tab communication using BroadcastChannel API. Open this page in multiple
-        tabs to see the broadcasting in action.
+        Demonstrates cross-tab communication using BroadcastChannel API. Broadcasts to all connected
+        instances on the same channel.
       </p>
     </div>
 
-    <div class="card">
-      <div class="section">
-        <h2>Channel Configuration</h2>
-        <div class="config-row">
-          <label>Channel Name:</label>
-          <input v-model="channelName" type="text" class="input" placeholder="Enter channel name" />
-          <button class="btn primary" :disabled="autoConnect" @click="() => reconnect()">
-            Connect
-          </button>
-        </div>
-        <div class="status-row">
-          <span class="status-badge" :class="{ ready: isConnected }">
-            {{ isConnected ? 'Connected' : 'Disconnected' }}
-          </span>
-        </div>
-      </div>
-
-      <div class="section">
-        <h2>Send Message</h2>
-        <div class="control-group">
-          <label>Payload (JSON):</label>
-          <textarea v-model="requestPayload" rows="3" class="payload-input"></textarea>
-        </div>
-
-        <div class="button-group">
-          <button class="btn primary" @click="sendRequest" :disabled="!isConnected">
-            Send Request
-          </button>
-          <button class="btn" @click="sendCommand" :disabled="!isConnected">Send Command</button>
-          <button class="btn secondary" @click="clearLogs">Clear Logs</button>
-        </div>
-      </div>
-
-      <div v-if="responseData" class="response-section">
-        <div class="response-header">Last Response:</div>
-        <pre class="response-data">{{ JSON.stringify(responseData, null, 2) }}</pre>
-      </div>
-
-      <div class="log-section">
-        <div class="log-header">
-          <span>Communication Log</span>
-        </div>
-        <div ref="logListRef" class="log-list">
-          <div v-if="logs.length === 0" class="empty-state">
-            No messages yet. Open this page in multiple tabs and try sending messages.
+    <div class="grid-layout">
+      <!-- Left Column: Controls -->
+      <div class="column">
+        <div class="component-card">
+          <div class="card-header">
+            <h2>Channel Configuration</h2>
+            <span class="status-indicator" :class="{ wait: !isConnected }">
+              {{ isConnected ? 'Connected' : 'Disconnected' }}
+            </span>
           </div>
-          <div v-for="(log, index) in logs" :key="index" class="log-item" :class="log.direction">
-            <span class="log-time">{{ log.time }}</span>
-            <span class="log-method" :class="log.method.toLowerCase()">{{ log.method }}</span>
-            <span class="log-direction">[{{ log.direction === 'sent' ? '→' : '←' }}]</span>
-            <pre class="log-payload">{{ JSON.stringify(log.params, null, 2) }}</pre>
+
+          <div class="card-body">
+            <div class="config-row">
+              <label>Channel_ID:</label>
+              <input
+                v-model="channelName"
+                type="text"
+                class="input-field"
+                placeholder="Enter channel name"
+              />
+              <button class="action-btn primary" :disabled="autoConnect" @click="() => reconnect()">
+                CONNECT
+              </button>
+            </div>
+            <div class="hint-text">Opens a new tab on connect to demonstrate broadcasting.</div>
+          </div>
+        </div>
+
+        <div class="component-card">
+          <div class="card-header">
+            <h2>Transmission Payload</h2>
+          </div>
+
+          <div class="card-body">
+            <div class="control-group">
+              <label>Payload (JSON):</label>
+              <textarea v-model="requestPayload" rows="4" class="payload-input"></textarea>
+            </div>
+
+            <div class="button-group">
+              <button class="action-btn primary" @click="sendRequest" :disabled="!isConnected">
+                Send Request
+              </button>
+              <button class="action-btn" @click="sendCommand" :disabled="!isConnected">
+                Send Notify
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Logs -->
+      <div class="column">
+        <div class="component-card terminal-card">
+          <div class="card-header terminal-header">
+            <h2>System Log</h2>
+            <button class="action-btn small" @click="clearLogs">Clear</button>
+          </div>
+
+          <div ref="logListRef" class="terminal-body">
+            <div v-if="logs.length === 0" class="empty-state">
+              > System Ready<br />
+              > Waiting for input...<br />
+              <span class="cursor">_</span>
+            </div>
+
+            <div v-for="(log, index) in logs" :key="index" class="log-item" :class="log.direction">
+              <div class="log-meta">
+                <span class="log-time">[{{ log.time }}]</span>
+                <span class="log-direction">{{ log.direction === 'sent' ? 'TX' : 'RX' }}</span>
+                <span class="log-method" :class="log.method.toLowerCase()">{{ log.method }}</span>
+              </div>
+              <pre class="log-payload">{{ JSON.stringify(log.params, null, 2) }}</pre>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="responseData" class="component-card response-card">
+          <div class="card-header">
+            <h2>Last Response</h2>
+          </div>
+          <div class="card-body">
+            <pre class="response-data">{{ JSON.stringify(responseData, null, 2) }}</pre>
           </div>
         </div>
       </div>
@@ -187,42 +224,106 @@ onUnmounted(() => {
 
 <style scoped>
 .broadcast-page {
-  max-width: 800px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .page-header {
-  margin-bottom: 32px;
+  margin-bottom: 40px;
+  border-left: 4px solid var(--accent);
+  padding-left: 20px;
 }
 
 .page-header h1 {
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: #333;
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
   margin-bottom: 8px;
+
+  letter-spacing: 2px;
 }
 
 .description {
-  color: #666;
-  line-height: 1.6;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
 }
 
-.card {
-  background: white;
-  border-radius: 8px;
-  padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+.grid-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
 }
 
-.section {
-  margin-bottom: 24px;
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
-.section h2 {
-  font-size: 1.1rem;
+.component-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.component-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border-top: 2px solid var(--accent);
+  border-left: 2px solid var(--accent);
+}
+
+.component-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-bottom: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.card-header h2 {
+  font-size: 1.2rem;
   font-weight: 600;
-  color: #333;
-  margin-bottom: 16px;
+  color: var(--text-primary);
+
+  letter-spacing: 1px;
+}
+
+.status-indicator {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--success);
+  padding: 2px 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-indicator.wait {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.card-body {
+  padding: 24px;
 }
 
 .config-row {
@@ -230,243 +331,253 @@ onUnmounted(() => {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+  margin-bottom: 12px;
 }
 
 .config-row label {
-  font-weight: 500;
-  color: #444;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  letter-spacing: 1px;
 }
 
-.input {
+.input-field {
   flex: 1;
   min-width: 200px;
   padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: 0.9rem;
+  transition: all 0.2s;
 }
 
-.input:focus {
+.input-field:focus {
   outline: none;
-  border-color: #4a90d9;
-  box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.1);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.2);
 }
 
-.status-row {
-  margin-top: 12px;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 12px;
+.hint-text {
   font-size: 0.8rem;
-  font-weight: 500;
-  background: #ffebee;
-  color: #c62828;
-}
-
-.status-badge.ready {
-  background: #e8f5e9;
-  color: #2e7d32;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  border-left: 2px solid var(--border-color);
+  padding-left: 8px;
 }
 
 .control-group {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .control-group label {
   display: block;
-  font-weight: 500;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
   margin-bottom: 8px;
-  color: #444;
+  letter-spacing: 1px;
 }
 
 .payload-input {
   width: 100%;
   padding: 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   resize: vertical;
-  background: #f8f8f8;
+  transition: all 0.2s;
 }
 
 .payload-input:focus {
   outline: none;
-  border-color: #4a90d9;
-  box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.1);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.2);
 }
 
 .button-group {
   display: flex;
   gap: 12px;
-  flex-wrap: wrap;
 }
 
-.btn {
-  padding: 10px 20px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: white;
-  color: #333;
+.action-btn {
   cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.2s;
-}
-
-.btn:hover:not(:disabled) {
-  background: #f5f5f5;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn.primary {
-  background: #4a90d9;
-  color: white;
-  border-color: #4a90d9;
-}
-
-.btn.primary:hover:not(:disabled) {
-  background: #3a7fc8;
-}
-
-.btn.secondary {
-  background: #f0f0f0;
-}
-
-.response-section {
-  margin: 20px 0;
-  padding: 16px;
-  background: #f0f9f0;
-  border-radius: 6px;
-  border: 1px solid #c8e6c9;
-}
-
-.response-header {
-  font-weight: 600;
-  color: #2e7d32;
-  margin-bottom: 8px;
-}
-
-.response-data {
-  margin: 0;
-  padding: 12px;
-  background: white;
-  border-radius: 4px;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  padding: 10px 16px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-primary);
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
   font-size: 0.85rem;
-  overflow-x: auto;
+  transition: all 0.2s;
+
+  flex: 1;
 }
 
-.log-section {
-  margin-top: 20px;
+.action-btn:hover:not(:disabled) {
+  background: var(--bg-panel-hover);
+  border-color: var(--border-focus);
 }
 
-.log-header {
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 12px;
+.action-btn.primary {
+  color: var(--accent-text);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
-.log-list {
-  background: #1e1e1e;
-  border-radius: 6px;
-  padding: 12px;
-  max-height: 400px;
+.action-btn.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.4);
+}
+
+.action-btn.small {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  flex: 0;
+}
+
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+.terminal-card {
+  flex: 1;
+  min-height: 400px;
+}
+
+.terminal-body {
+  background: var(--log-bg);
+  padding: 16px;
+  flex: 1;
   overflow-y: auto;
+  font-family: var(--font-mono);
+  border-top: 1px solid var(--border-color);
+  max-height: 500px;
+}
+
+.empty-state {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.8;
+}
+
+.cursor {
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 
 .log-item {
-  padding: 8px;
-  margin-bottom: 8px;
-  border-radius: 4px;
-  background: #2d2d2d;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--log-border);
 }
 
 .log-item:last-child {
+  border-bottom: none;
   margin-bottom: 0;
+  padding-bottom: 0;
 }
 
-.log-item.sent {
-  border-left: 3px solid #4a90d9;
-}
-
-.log-item.received {
-  border-left: 3px solid #4ec9b0;
+.log-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
 }
 
 .log-time {
   color: #569cd6;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 0.8rem;
-  margin-right: 8px;
-}
-
-.log-method {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-right: 8px;
-}
-
-.log-method.request {
-  background: #4a90d9;
-  color: white;
-}
-
-.log-method.response {
-  background: #4ec9b0;
-  color: #1e1e1e;
-}
-
-.log-method.command {
-  background: #d4a90d;
-  color: #1e1e1e;
-}
-
-.log-method.error {
-  background: #d32f2f;
-  color: white;
-}
-
-.log-method.system {
-  background: #7c4dff;
-  color: white;
-}
-
-.log-method.ping {
-  background: #4a90d9;
-  color: white;
 }
 
 .log-direction {
-  color: #888;
-  margin-right: 8px;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.log-item.sent .log-direction {
+  color: var(--accent);
+}
+
+.log-item.received .log-direction {
+  color: var(--success);
+}
+
+.log-method {
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: #333;
+  color: #fff;
+}
+
+.log-method.request {
+  background: #005f87;
+}
+.log-method.response {
+  background: #00875f;
+}
+.log-method.command {
+  background: #875f00;
+}
+.log-method.error {
+  background: #870000;
+}
+.log-method.system {
+  background: #5f0087;
+}
+.log-method.ping {
+  background: #4ec9b0;
+  color: #000;
 }
 
 .log-payload {
-  margin: 8px 0 0 0;
-  padding: 8px;
-  background: #1a1a1a;
-  border-radius: 4px;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 0.8rem;
+  margin: 0;
   color: #d4d4d4;
-  overflow-x: auto;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding-left: 12px;
+  border-left: 2px solid #333;
+}
+
+.response-card {
+  background: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.response-card .card-header h2 {
+  color: var(--success);
+}
+
+.response-data {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--success);
   white-space: pre-wrap;
   word-break: break-all;
 }
 
-.empty-state {
-  color: #6a9955;
-  text-align: center;
-  padding: 20px;
+@media (max-width: 900px) {
+  .grid-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

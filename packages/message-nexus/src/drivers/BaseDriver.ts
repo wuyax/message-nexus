@@ -4,7 +4,13 @@ export interface JsonRpcRequest {
   jsonrpc: '2.0'
   method: string
   params?: unknown
-  id?: JsonRpcId
+  id: JsonRpcId
+}
+
+export interface JsonRpcNotification {
+  jsonrpc: '2.0'
+  method: string
+  params?: unknown
 }
 
 export interface JsonRpcResponse {
@@ -18,7 +24,7 @@ export interface JsonRpcResponse {
   id: JsonRpcId
 }
 
-export interface NexusEnvelope<T = JsonRpcRequest | JsonRpcResponse> {
+export interface NexusEnvelope<T = JsonRpcRequest | JsonRpcResponse | JsonRpcNotification> {
   from: string
   to?: string
   metadata?: Record<string, unknown>

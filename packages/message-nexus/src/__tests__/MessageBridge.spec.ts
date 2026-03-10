@@ -125,6 +125,88 @@ describe('MessageNexus', () => {
     })
   })
 
+  describe('notify', () => {
+    it('should send notification message with correct format', () => {
+      const sendSpy = vi.spyOn(mockDriver, 'send')
+
+      bridge.notify({ method: 'TEST_NOTIFY', params: { data: 'test' } })
+
+      expect(sendSpy).toHaveBeenCalledWith({
+        from: bridge.instanceId,
+        to: undefined,
+        metadata: { timestamp: expect.any(Number) },
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_NOTIFY',
+          params: { data: 'test' },
+        },
+      })
+    })
+
+    it('should handle string notification', () => {
+      const sendSpy = vi.spyOn(mockDriver, 'send')
+
+      bridge.notify('TEST_NOTIFY')
+
+      expect(sendSpy).toHaveBeenCalledWith({
+        from: bridge.instanceId,
+        to: undefined,
+        metadata: { timestamp: expect.any(Number) },
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_NOTIFY',
+          params: undefined,
+        },
+      })
+    })
+  })
+
+  describe('onNotify', () => {
+    it('should register and call notification handler', () => {
+      const handler = vi.fn()
+      const unregister = bridge.onNotify(handler)
+
+      mockDriver.onMessage?.({
+        from: 'sender',
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_NOTIFY',
+          params: { data: 'test' },
+        },
+      } as any)
+
+      expect(handler).toHaveBeenCalledWith({
+        from: 'sender',
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_NOTIFY',
+          params: { data: 'test' },
+        },
+      })
+
+      unregister()
+    })
+
+    it('should not call notification handler for command messages', () => {
+      const handler = vi.fn()
+      const unregister = bridge.onNotify(handler)
+
+      mockDriver.onMessage?.({
+        from: 'sender',
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_COMMAND',
+          params: { data: 'test' },
+          id: 'test-id',
+        },
+      } as any)
+
+      expect(handler).not.toHaveBeenCalled()
+
+      unregister()
+    })
+  })
+
   describe('reply', () => {
     it('should send response message', () => {
       const sendSpy = vi.spyOn(mockDriver, 'send')

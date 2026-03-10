@@ -3,6 +3,7 @@ import BaseDriver, {
   type NexusEnvelope,
   type JsonRpcRequest,
   type JsonRpcResponse,
+  type JsonRpcNotification,
 } from './drivers/BaseDriver'
 import BroadcastDriver from './drivers/BroadcastDriver'
 import MittDriver from './drivers/MittDriver'
@@ -29,6 +30,7 @@ interface RequestOptions {
 }
 
 export type CommandMessage = NexusEnvelope<JsonRpcRequest>
+export type NotifyMessage = NexusEnvelope<JsonRpcNotification>
 
 export type ErrorHandler = (error: Error, context?: Record<string, unknown>) => void
 
@@ -58,6 +60,7 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
   >
   incomingMessages: Map<string, { from: string; method: string; timestamp: number }>
   messageHandlers: Set<(data: CommandMessage) => void>
+  notifyHandlers: Set<(data: NotifyMessage) => void>
   timeout: number
   instanceId: string
   private cleanupInterval: ReturnType<typeof setInterval> | null = null
@@ -99,6 +102,7 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
     this.pendingTasks = new Map()
     this.incomingMessages = new Map()
     this.messageHandlers = new Set()
+    this.notifyHandlers = new Set()
     this.cleanupInterval = null
 
     this.driver.onMessage = (data) => this._handleIncoming(data)
@@ -183,15 +187,15 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
   }
 
   private _sendMessage(message: Message) {
-    const payload = message.payload as JsonRpcRequest | JsonRpcResponse
+    const payload = message.payload as JsonRpcRequest | JsonRpcResponse | JsonRpcNotification
     const isRequest = 'method' in payload
-    const messageId = payload.id
+    const messageId = 'id' in payload ? String(payload.id) : undefined
     const typeOrMethod = isRequest ? payload.method : 'RESPONSE'
 
     try {
       this.driver.send(message)
       this.metrics.messagesSent++
-      if (isRequest) {
+      if (isRequest && messageId !== undefined) {
         this.metrics.pendingMessages++
       }
       this.logger.debug('Message sent', { messageId, type: typeOrMethod })
@@ -240,6 +244,41 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
     }
   }
 
+  notify(methodOrOptions: string | Omit<RequestOptions, 'timeout' | 'retryCount' | 'retryDelay'>) {
+    let method: string
+    let params: unknown
+    let to: string | undefined
+    let metadata: Record<string, unknown>
+
+    if (typeof methodOrOptions === 'string') {
+      method = methodOrOptions
+      params = undefined
+      to = undefined
+      metadata = {}
+    } else {
+      const opts = methodOrOptions
+      method = opts.method
+      params = opts.params
+      to = opts.to
+      metadata = opts.metadata || {}
+    }
+
+    const rpcNotification: JsonRpcNotification = {
+      jsonrpc: '2.0',
+      method,
+      params,
+    }
+
+    const message: Message = {
+      from: this.instanceId,
+      to,
+      metadata: { ...metadata, timestamp: Date.now() },
+      payload: rpcNotification,
+    }
+
+    this._sendMessage(message)
+  }
+
   private _validateMessage(data: unknown): data is Message {
     if (!data || typeof data !== 'object') return false
     const env = data as Partial<Message>
@@ -269,11 +308,11 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
     }
 
     const envelope = data as Message
-    const payload = envelope.payload as JsonRpcRequest | JsonRpcResponse
+    const payload = envelope.payload as JsonRpcRequest | JsonRpcResponse | JsonRpcNotification
 
     if (envelope.to && envelope.to !== this.instanceId) {
       this.logger.debug('Message filtered: not for this instance', {
-        messageId: payload.id,
+        messageId: 'id' in payload ? payload.id : undefined,
         to: envelope.to,
         instanceId: this.instanceId,
       })
@@ -314,25 +353,40 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
     }
 
     if ('method' in payload) {
-      const request = payload as JsonRpcRequest
-      const id = String(request.id)
+      if ('id' in payload) {
+        const request = payload as JsonRpcRequest
+        const id = String(request.id)
 
-      this.logger.debug('Command message received', {
-        messageId: id,
-        type: request.method,
-        from: envelope.from,
-      })
-      this.incomingMessages.set(id, {
-        from: envelope.from,
-        method: request.method,
-        timestamp: Date.now(),
-      })
+        this.logger.debug('Command message received', {
+          messageId: id,
+          type: request.method,
+          from: envelope.from,
+        })
+        this.incomingMessages.set(id, {
+          from: envelope.from,
+          method: request.method,
+          timestamp: Date.now(),
+        })
 
-      const commandMessage: CommandMessage = {
-        ...envelope,
-        payload: request,
+        const commandMessage: CommandMessage = {
+          ...envelope,
+          payload: request,
+        }
+        this.messageHandlers.forEach((handler) => handler(commandMessage))
+      } else {
+        const notification = payload as JsonRpcNotification
+
+        this.logger.debug('Notification message received', {
+          type: notification.method,
+          from: envelope.from,
+        })
+
+        const notifyMessage: NotifyMessage = {
+          ...envelope,
+          payload: notification,
+        }
+        this.notifyHandlers.forEach((handler) => handler(notifyMessage))
       }
-      this.messageHandlers.forEach((handler) => handler(commandMessage))
     }
   }
 
@@ -353,6 +407,11 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
   onCommand(handler: (data: CommandMessage) => void) {
     this.messageHandlers.add(handler)
     return () => this.messageHandlers.delete(handler)
+  }
+
+  onNotify(handler: (data: NotifyMessage) => void) {
+    this.notifyHandlers.add(handler)
+    return () => this.notifyHandlers.delete(handler)
   }
 
   reply(messageId: string, payload: unknown, error?: unknown) {

@@ -30,11 +30,15 @@ function addLog(type: string, payload: unknown) {
 }
 
 // Listen for commands from parent
+nexus.onNotify((data) => {
+  addLog('NOTIFY', data)
+})
+
 nexus.onCommand((data) => {
   addLog('COMMAND', data)
 
   // Reply with success
-  nexus.reply(String(data.payload.id), { received: true, echo: data.payload ?? data })
+  nexus.reply(String(data.payload.id), { current_time: new Date().toISOString() })
 })
 
 // Listen for errors
@@ -51,23 +55,34 @@ onMounted(() => {
 
 <template>
   <div class="iframe-receiver">
-    <div class="card">
-      <div class="title">PostMessageDriver - Iframe Receiver</div>
-      <p class="description">
-        This page acts as the iframe receiver. It communicates with the parent window using
-        PostMessageDriver.
-      </p>
+    <div class="component-card">
+      <div class="card-header">
+        <div class="title">IFRAME RECEIVER MODULE</div>
+        <span class="status-indicator">ACTIVE</span>
+      </div>
 
-      <div class="log-section">
-        <div class="log-header">Received Messages</div>
-        <div ref="logListRef" class="log-list">
-          <div v-if="logs.length === 0" class="empty-state">
-            Waiting for messages from parent...
+      <div class="card-body">
+        <p class="description">
+          TARGET: window.parent<br />
+          PROTOCOL: PostMessageDriver
+        </p>
+
+        <div class="terminal-card">
+          <div class="terminal-header">
+            <h2>Incoming Data Stream</h2>
           </div>
-          <div v-for="(log, index) in logs" :key="index" class="log-item">
-            <span class="log-time">[{{ log.time }}]</span>
-            <span class="log-type">{{ log.type }}</span>
-            <pre class="log-payload">{{ JSON.stringify(log.payload, null, 2) }}</pre>
+          <div ref="logListRef" class="terminal-body">
+            <div v-if="logs.length === 0" class="empty-state">
+              > AWAITING TRANSMISSION...<br />
+              <span class="cursor">_</span>
+            </div>
+            <div v-for="(log, index) in logs" :key="index" class="log-item">
+              <div class="log-meta">
+                <span class="log-time">[{{ log.time }}]</span>
+                <span class="log-type">{{ log.type }}</span>
+              </div>
+              <pre class="log-payload">{{ JSON.stringify(log.payload, null, 2) }}</pre>
+            </div>
           </div>
         </div>
       </div>
@@ -77,97 +92,177 @@ onMounted(() => {
 
 <style scoped>
 .iframe-receiver {
-  padding: 20px;
-  background: #f5f5f5;
+  padding: 16px;
+  background-image:
+    linear-gradient(rgba(249, 115, 22, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(249, 115, 22, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
   min-height: 100vh;
+  box-sizing: border-box;
 }
 
-.card {
-  background: white;
-  border-radius: 8px;
-  padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  max-width: 600px;
-  margin: 0 auto;
+.component-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 32px);
+}
+
+.component-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border-top: 2px solid var(--accent);
+  border-left: 2px solid var(--accent);
+}
+
+.component-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-bottom: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .title {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   font-weight: 600;
-  color: #333;
-  margin-bottom: 12px;
+  color: var(--text-primary);
+
+  letter-spacing: 1px;
+}
+
+.status-indicator {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--success);
+  padding: 2px 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.card-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 16px;
 }
 
 .description {
-  color: #666;
-  margin-bottom: 20px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
   line-height: 1.6;
+  margin: 0;
+  border-left: 2px solid var(--border-color);
+  padding-left: 12px;
+}
+
+.terminal-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-color);
+}
+
+.terminal-header {
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.terminal-header h2 {
   font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  margin: 0;
 }
 
-.log-section {
-  margin-top: 20px;
-}
-
-.log-header {
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 12px;
-}
-
-.log-list {
-  background: #1e1e1e;
-  border-radius: 6px;
+.terminal-body {
+  background: var(--log-bg);
   padding: 12px;
-  max-height: 400px;
+  flex: 1;
   overflow-y: auto;
+  font-family: var(--font-mono);
+}
+
+.empty-state {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.8;
+}
+
+.cursor {
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 
 .log-item {
-  padding: 8px;
-  margin-bottom: 8px;
-  border-radius: 4px;
-  background: #2d2d2d;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--log-border);
 }
 
 .log-item:last-child {
+  border-bottom: none;
   margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.log-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
 }
 
 .log-time {
   color: #569cd6;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 0.8rem;
-  margin-right: 8px;
 }
 
 .log-type {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: #4a90d9;
-  color: white;
-  margin-right: 8px;
+  padding: 2px 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 .log-payload {
-  margin: 8px 0 0 0;
-  padding: 8px;
-  background: #1a1a1a;
-  border-radius: 4px;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 0.8rem;
+  margin: 0;
   color: #d4d4d4;
-  overflow-x: auto;
+  font-size: 0.8rem;
   white-space: pre-wrap;
   word-break: break-all;
-}
-
-.empty-state {
-  color: #6a9955;
-  text-align: center;
-  padding: 20px;
+  padding-left: 12px;
+  border-left: 2px solid #333;
 }
 </style>

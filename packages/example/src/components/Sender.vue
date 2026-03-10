@@ -30,37 +30,89 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="greetings">
-    <div class="title">Message Sender Test Page</div>
-    <button class="send-btn" @click="send">Send</button>
-    <hr class="divider" />
+  <div class="sender-module">
+    <div class="title">TRANSMISSION CONTROL</div>
+    <div class="control-panel">
+      <div class="data-readout">
+        <span class="label">METHOD:</span> <span class="value">anov.create</span><br />
+        <span class="label">TARGET:</span> <span class="value">myBridgeId</span>
+      </div>
+      <button class="send-btn" @click="send"><span class="btn-icon">⚡</span> Initiate Send</button>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.title {
-  font-size: 1.2rem;
-  font-weight: 500;
-  text-align: center;
-  margin-bottom: 20px;
+.sender-module {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
+
+.title {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+
+  letter-spacing: 2px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 8px;
+}
+
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.data-readout {
+  background: var(--bg-color);
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.8;
+}
+
+.label {
+  color: var(--text-secondary);
+}
+
+.value {
+  color: var(--accent);
+}
+
 .send-btn {
   cursor: pointer;
-  padding: 5px 10px;
-  border-radius: 5px;
-  border: 1px solid #ccc;
+  padding: 12px 20px;
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  font-weight: 700;
+
+  letter-spacing: 2px;
+  color: var(--bg-color);
+  background: var(--text-primary);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.2s;
+  box-shadow: 4px 4px 0 var(--border-color);
 }
+
 .send-btn:hover {
-  background-color: #f5f5f5;
+  background: var(--accent);
+  box-shadow: 4px 4px 0 rgba(249, 115, 22, 0.3);
+  transform: translate(-2px, -2px);
 }
+
 .send-btn:active {
-  background-color: #ccc;
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 transparent;
 }
-.send-btn:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
-}
-.divider {
-  margin: 10px 0;
+
+.btn-icon {
+  font-size: 1.2rem;
 }
 </style>
