@@ -98,16 +98,14 @@ const driver = new MittDriver(emitter)
 const nexus = new MessageNexus(driver)
 
 // Send request
-const response = await nexus.request({
+const response = await nexus.invoke({
   method: 'GET_DATA',
   params: { id: 123 },
 })
 
 // Listen for commands
-const unsubscribe = nexus.onCommand((data) => {
-  if (data.payload.method === 'GET_DATA') {
-    nexus.reply(data.payload.id as string, { name: 'test', value: 42 })
-  }
+const unsubscribe = nexus.handle('GET_DATA', (params, context) => {
+  return { name: 'test', value: 42 }
 })
 
 // Clean up resources (Important!)

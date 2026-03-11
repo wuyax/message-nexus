@@ -82,7 +82,7 @@ export type { MessageNexusOptions, RequestOptions, Message }
 | Types           | PascalCase               | `ErrorHandler`               |
 | Enums           | PascalCase               | `LogLevel`                   |
 | Private members | camelCase with `private` | `private cleanupInterval`    |
-| Methods         | camelCase                | `onCommand`, `getMetrics`    |
+| Methods         | camelCase                | `handle`, `getMetrics`       |
 | Constants       | UPPER_SNAKE_CASE         | `LOG_LEVEL_DEBUG`            |
 | Files           | kebab-case               | `web-socket-driver.ts`       |
 

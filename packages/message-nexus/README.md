@@ -39,7 +39,7 @@ const driver = new MittDriver(emitter)
 const nexus = new MessageNexus(driver)
 
 // Send request
-const response = await nexus.request('GET_DATA', { id: 123 })
+const response = await nexus.invoke('GET_DATA', { id: 123 })
 console.log(response)
 
 // Send one-way notification
@@ -48,15 +48,13 @@ nexus.notify('UPDATE_STATUS', { status: 'active' })
 // Listen for commands
 const receiverDriver = new MittDriver(emitter)
 const receiverNexus = new MessageNexus(receiverDriver)
-const unsubscribe = receiverNexus.onCommand((data) => {
-  if (data.payload.method === 'GET_DATA') {
-    receiverNexus.reply(data.payload.id as string, { name: 'test', value: 42 })
-  }
+const unsubscribe = receiverNexus.handle('GET_DATA', (params, context) => {
+  return { name: 'test', value: 42 }
 })
 
 // Listen for notifications
-const unsubscribeNotify = receiverNexus.onNotify((data) => {
-  console.log('Notification received:', data.payload.method)
+const unsubscribeNotify = receiverNexus.onNotification('UPDATE_STATUS', (params, context) => {
+  console.log('Notification received:', params)
 })
 ```
 
@@ -69,17 +67,15 @@ import MessageNexus, { PostMessageDriver } from 'message-nexus'
 const driver = new PostMessageDriver(window.parent, 'https://example.com')
 const nexus = new MessageNexus(driver)
 
-const response = await nexus.request('PING')
+const response = await nexus.invoke('PING')
 console.log('Pong:', response)
 
 // Receiver
 const iframeDriver = new PostMessageDriver(iframe.contentWindow, 'https://example.com')
 const iframeNexus = new MessageNexus(iframeDriver)
 
-iframeNexus.onCommand((data) => {
-  if (data.payload.method === 'PING') {
-    iframeNexus.reply(data.payload.id as string, { time: Date.now() })
-  }
+iframeNexus.handle('PING', (params, context) => {
+  return { time: Date.now() }
 })
 ```
 
@@ -93,13 +89,13 @@ const driver = new BroadcastDriver({ channel: 'my-app-channel' })
 const nexus = new MessageNexus(driver)
 
 // Listen for commands
-nexus.onCommand((data) => {
-  console.log('Received:', data.payload.method, data.payload.params)
-  nexus.reply(data.payload.id as string, { result: 'success' })
+nexus.handle('SYNC_STATE', (params, context) => {
+  console.log('Received:', params)
+  return { result: 'success' }
 })
 
 // Send request (will be broadcast to all tabs on the same channel)
-const response = await nexus.request({
+const response = await nexus.invoke({
   method: 'SYNC_STATE',
   params: { state: '...' },
 })
@@ -107,9 +103,9 @@ const response = await nexus.request({
 // Receiver
 const receiverDriver = new BroadcastDriver({ channel: 'my-app-channel' })
 const receiverNexus = new MessageNexus(receiverDriver)
-receiverNexus.onCommand((data) => {
-  console.log('Received:', data.payload.method, data.payload.params)
-  receiverNexus.reply(data.payload.id as string, { result: 'success' })
+receiverNexus.handle('SYNC_STATE', (params, context) => {
+  console.log('Received:', params)
+  return { result: 'success' }
 })
 ```
 
@@ -130,7 +126,7 @@ const driver = new WebSocketDriver({
 const nexus = new MessageNexus(driver)
 
 // Send request
-const response = await nexus.request({
+const response = await nexus.invoke({
   method: 'GET_USER',
   params: { userId: 123 },
   timeout: 5000,
@@ -147,9 +143,9 @@ const receiverDriver = new WebSocketDriver({
   },
 })
 const receiverNexus = new MessageNexus(receiverDriver)
-receiverNexus.onCommand((data) => {
-  console.log('Received:', data.payload.method, data.payload.params)
-  receiverNexus.reply(data.payload.id as string, { result: 'success' })
+receiverNexus.handle('SYNC_STATE', (params, context) => {
+  console.log('Received:', params)
+  return { result: 'success' }
 })
 ```
 
@@ -176,12 +172,12 @@ new MessageNexus<RequestPayload, ResponsePayload>(
 
 #### Methods
 
-##### request()
+##### invoke()
 
 Send request and wait for response.
 
 ```typescript
-nexus.request(methodOrOptions: string | RequestOptions): Promise<ResponsePayload>
+nexus.invoke<T>(methodOrOptions: string | InvokeOptions): Promise<T>
 ```
 
 **Options:**
@@ -200,10 +196,10 @@ nexus.request(methodOrOptions: string | RequestOptions): Promise<ResponsePayload
 
 ```typescript
 // Simple request
-const result = await nexus.request('FETCH_DATA')
+const result = await nexus.invoke('FETCH_DATA')
 
 // Full configuration
-const result = await nexus.request({
+const result = await nexus.invoke({
   method: 'FETCH_DATA',
   params: { id: 123 },
   to: 'target-instance',
@@ -218,7 +214,7 @@ const result = await nexus.request({
 Send a one-way notification (Fire-and-Forget). Does not wait for a response and does not generate an ID. Complies with JSON-RPC 2.0 Notification specification.
 
 ```typescript
-nexus.notify(methodOrOptions: string | Omit<RequestOptions, 'timeout' | 'retryCount' | 'retryDelay'>): void
+nexus.notify(methodOrOptions: string | Omit<InvokeOptions, 'timeout' | 'retryCount' | 'retryDelay'>): void
 ```
 
 **Options:**
@@ -244,65 +240,57 @@ nexus.notify({
 })
 ```
 
-##### onCommand()
+##### handle()
 
-Register message handler.
+Register a request handler for a specific method. The return value (or resolved value of a returned Promise) is automatically sent back as the response.
 
 ```typescript
-nexus.onCommand(handler: (data: CommandMessage) => void): () => void
+nexus.handle<Params, Result>(method: string, handler: InvokeHandler<Params, Result>): () => void
 ```
 
-**Return Value:** Unsubscribe function
+**Parameters:**
+
+- `method`: The method name to handle.
+- `handler`: A function that receives `(params, context)` and returns a result or a Promise.
+
+**InvokeContext:**
+
+| Property    | Type                      | Description                                     |
+| ----------- | ------------------------- | ----------------------------------------------- |
+| `messageId` | `string`                  | Unique identifier for the request (JSON-RPC ID) |
+| `from`      | `string`                  | Instance ID of the sender                       |
+| `to`        | `string`                  | Instance ID of the receiver (your instance ID)  |
+| `metadata`  | `Record<string, unknown>` | Custom metadata sent with the envelope          |
 
 **Example:**
 
 ```typescript
-const unsubscribe = nexus.onCommand((data) => {
-  console.log('Received:', data.payload.method, data.payload.params)
-
-  if (data.payload.method === 'ECHO') {
-    nexus.reply(data.payload.id as string, { echoed: data.payload.params })
-  }
+const unsubscribe = nexus.handle('ECHO', (params, context) => {
+  console.log(`Received ECHO from ${context.from}`)
+  return { echoed: params }
 })
 
 // Unsubscribe
 unsubscribe()
 ```
 
-##### onNotify()
+##### onNotification()
 
-Register notification handler (for incoming `notify` calls).
+Register a handler for a specific notification method (one-way messages).
 
 ```typescript
-nexus.onNotify(handler: (data: NotifyMessage) => void): () => void
+nexus.onNotification<Params>(method: string, handler: NotificationHandler<Params>): () => void
 ```
-
-**Return Value:** Unsubscribe function
 
 **Example:**
 
 ```typescript
-const unsubscribe = nexus.onNotify((data) => {
-  console.log('Notification received:', data.payload.method, data.payload.params)
+const unsubscribe = nexus.onNotification('HEARTBEAT', (params, context) => {
+  console.log(`Heartbeat from ${context.from}`)
 })
 
 // Unsubscribe
 unsubscribe()
-```
-
-##### reply()
-
-Reply to incoming message.
-
-```typescript
-nexus.reply(messageId: string, payload: unknown, error?: unknown)
-```
-
-**Example:**
-
-```typescript
-nexus.reply('message-id-123', { success: true })
-nexus.reply('message-id-456', null, new Error('Invalid request'))
 ```
 
 ##### onError()
@@ -499,9 +487,9 @@ const driver = new BroadcastDriver({ channel: 'my-app-channel' })
 const nexus = new MessageNexus(driver)
 
 // Listen for messages from other tabs
-nexus.onCommand((data) => {
-  console.log('Received from another tab:', data)
-  nexus.reply(data.id, { received: true })
+nexus.handle('SOME_METHOD', (params, context) => {
+  console.log('Received from another tab:', params)
+  return { received: true }
 })
 
 // Clean up resources
@@ -514,48 +502,45 @@ nexus.destroy()
 - Automatically adds a protocol identifier to filter non-MessageNexus messages
 - Supports dynamic channel switching
 
-## Logger
+## Advanced Usage / Techniques
 
-### Basic Usage
+### Asynchronous Handlers
+
+Handlers registered via `handle()` can be `async` functions or return a `Promise`. MessageNexus will wait for the Promise to resolve before sending the response back to the caller.
 
 ```typescript
-import { Logger, createConsoleHandler, LogLevel } from 'message-nexus/utils/logger'
-
-const logger = new Logger('MyApp', LogLevel.DEBUG)
-logger.addHandler(createConsoleHandler())
-
-logger.debug('Debug message', { data: 123 })
-logger.info('Info message')
-logger.warn('Warning message')
-logger.error('Error message', { error: new Error('test') })
+nexus.handle('FETCH_REMOTE', async (params) => {
+  const data = await fetch(`https://api.example.com/items/${params.id}`)
+  return await data.json()
+})
 ```
 
-### Custom Log Handler
+### Suspending Responses (Manual Reply Simulation)
+
+In some cases, you may need to wait for a user action (like clicking a button in the UI) before replying to a request. You can achieve this by returning a Promise and storing its `resolve` function.
 
 ```typescript
-const apiHandler = (entry) => {
-  fetch('/api/logs', {
-    method: 'POST',
-    body: JSON.stringify(entry),
+const pendingResolvers = new Map<string, (value: any) => void>()
+
+nexus.handle('user.confirm', (params, context) => {
+  return new Promise((resolve) => {
+    // Store the resolve function indexed by messageId
+    const id = context.messageId!
+    pendingResolvers.set(id, resolve)
+
+    // Trigger some UI to show a confirmation dialog
+    showDialog(params.message)
   })
+})
+
+// Later, when the user clicks "Confirm"
+function onUserConfirm(id: string) {
+  const resolve = pendingResolvers.get(id)
+  if (resolve) {
+    resolve({ confirmed: true })
+    pendingResolvers.delete(id)
+  }
 }
-
-logger.addHandler(apiHandler)
-```
-
-### Set Log Level
-
-```typescript
-logger.setMinLevel(LogLevel.WARN) // Only output WARN and ERROR
-```
-
-### Usage in Bridge
-
-```typescript
-import { Logger } from 'message-nexus/utils/logger'
-
-const logger = new Logger('MyBridge')
-const nexus = new MessageNexus(driver, { logger })
 ```
 
 ## Design Highlights
@@ -577,7 +562,7 @@ interface UserResponse {
 const nexus = new MessageNexus<UserRequest, UserResponse>(driver)
 
 // Full type inference
-const response = await nexus.request({
+const response = await nexus.invoke({
   method: 'GET_USER',
   params: { userId: 123 }, // Type: UserRequest
 })
@@ -589,7 +574,8 @@ console.log(response.name)
 ### 2. Memory Safety
 
 - **Auto Cleanup**: Regularly clean up expired message records
-- **Manual Cleanup**: Records are deleted immediately after `reply()`
+- **Manual Cleanup**: Internal request records are deleted immediately after the response is received or timed out
+- **Auto-Reply**: Handlers automatically send responses when the return value is resolved, ensuring no orphaned requests
 - **Resource Release**: The `destroy()` method cleans up all timers and event listeners
 - **Queue Limits**: The message queue has a maximum size limit to prevent infinite growth
 - **Driver Lifecycle**: Each driver implements the `destroy()` method to correctly release resources
@@ -622,25 +608,6 @@ console.log(
 )
 console.log(`Avg latency: ${metrics.averageLatency}ms`)
 console.log(`Pending: ${metrics.pendingMessages}, Queued: ${metrics.queuedMessages}`)
-```
-
-### 6. Structured Logging
-
-Unified logging interface supporting multiple output methods:
-
-```typescript
-// Console output
-logger.addHandler(createConsoleHandler())
-
-// Send to API
-logger.addHandler((entry) => {
-  fetch('/api/logs', { body: JSON.stringify(entry) })
-})
-
-// Send to ELK
-logger.addHandler((entry) => {
-  elk.send(entry)
-})
 ```
 
 ## Testing
