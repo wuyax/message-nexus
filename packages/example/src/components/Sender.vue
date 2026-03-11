@@ -9,8 +9,8 @@ const nexus = new MessageNexus(driver)
 
 function send() {
   nexus
-    .request({
-      method: 'anov.create',
+    .invoke({
+      method: 'scence.create',
       params: { name: 'test' + Math.random() },
       to: 'myBridgeId',
       retryCount: 3,
@@ -34,7 +34,7 @@ onUnmounted(() => {
     <div class="title">TRANSMISSION CONTROL</div>
     <div class="control-panel">
       <div class="data-readout">
-        <span class="label">METHOD:</span> <span class="value">anov.create</span><br />
+        <span class="label">METHOD:</span> <span class="value">scence.create</span><br />
         <span class="label">TARGET:</span> <span class="value">myBridgeId</span>
       </div>
       <button class="send-btn" @click="send"><span class="btn-icon">⚡</span> Initiate Send</button>

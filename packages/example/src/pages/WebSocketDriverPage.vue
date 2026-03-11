@@ -81,10 +81,18 @@ function connect() {
     const nexus = new MessageNexus(driver)
     nexusRef.value = nexus
 
-    nexus.onCommand((data) => {
-      addLog(data.payload.method, 'received', data)
-      updateMetrics()
-      nexus.reply(String(data.payload.id), { message: `${data.payload.method} processed` })
+    nexus.handle('PING', (params, context) => {
+      console.log('🚀 ~ data:', params, context)
+      addLog('PING', 'received', params)
+      return { message: 'data received' }
+    })
+
+    nexus.handle('EXECUTE_ERROR', () => {
+      throw new Error('This is an expected execution error')
+    })
+
+    nexus.onNotification('NOTIFICATION', (params, context) => {
+      addLog('NOTIFICATION', 'received', params)
     })
 
     nexus.onError((error) => {
@@ -129,7 +137,7 @@ function sendRequest() {
     addLog('Request', 'sent', payload)
 
     nexusRef.value
-      .request({
+      .invoke({
         method: 'PING',
         params: payload,
       })
@@ -147,13 +155,13 @@ function sendRequest() {
   }
 }
 
-function sendGetTime() {
+function sendUnknownMethod() {
   if (!nexusRef.value) return
 
-  addLog('Request', 'sent', { method: 'GET_TIME' })
+  addLog('Request', 'sent', { method: 'UNKNOWN_METHOD' })
 
   nexusRef.value
-    .request({ method: 'GET_TIME' })
+    .invoke({ method: 'UNKNOWN_METHOD' })
     .then((res) => {
       addLog('Response', 'received', res)
       responseData.value = res
@@ -164,42 +172,38 @@ function sendGetTime() {
     })
 }
 
-function sendEcho() {
+function sendExecutionError() {
   if (!nexusRef.value) return
 
-  const payload = { message: 'Hello Echo!', timestamp: Date.now() }
-  addLog('Request', 'sent', { method: 'ECHO', params: payload, payload })
+  addLog('Request', 'sent', { method: 'EXECUTE_ERROR' })
 
   nexusRef.value
-    .request({
-      method: 'ECHO',
+    .invoke({ method: 'EXECUTE_ERROR' })
+    .then((res) => {
+      addLog('Response', 'received', res)
+      responseData.value = res
+      updateMetrics()
+    })
+    .catch((err) => {
+      addLog('Error', 'received', { error: err.message })
+    })
+}
+
+function sendNotify() {
+  if (!nexusRef.value) return
+
+  const payload = { message: 'System notification', timestamp: Date.now() }
+  addLog('Command', 'sent', { method: 'NOTIFICATION', params: payload })
+
+  try {
+    nexusRef.value.notify({
+      method: 'NOTIFICATION',
       params: payload,
     })
-    .then((res) => {
-      addLog('Response', 'received', res)
-      responseData.value = res
-      updateMetrics()
-    })
-    .catch((err) => {
-      addLog('Error', 'received', { error: err.message })
-    })
-}
-
-function sendGetData() {
-  if (!nexusRef.value) return
-
-  addLog('Request', 'sent', { method: 'GET_DATA' })
-
-  nexusRef.value
-    .request({ method: 'GET_DATA' })
-    .then((res) => {
-      addLog('Response', 'received', res)
-      responseData.value = res
-      updateMetrics()
-    })
-    .catch((err) => {
-      addLog('Error', 'received', { error: err.message })
-    })
+    updateMetrics()
+  } catch (err) {
+    addLog('Error', 'received', { error: (err as Error).message })
+  }
 }
 
 function clearLogs() {
@@ -271,10 +275,12 @@ onUnmounted(() => {
             </div>
 
             <div class="control-group checkbox-group">
-              <label class="checkbox-container">
+              <label class="checkbox-container" :class="{ disabled: isConnected }">
                 <input v-model="reconnectEnabled" type="checkbox" :disabled="isConnected" />
-                <span class="checkmark"></span>
-                ENABLE AUTO-REConnect
+                <div class="toggle-switch">
+                  <div class="toggle-knob"></div>
+                </div>
+                <span class="toggle-label">ENABLE AUTO-RECONNECT</span>
               </label>
             </div>
 
@@ -296,14 +302,22 @@ onUnmounted(() => {
               <button class="action-btn outline" @click="sendRequest" :disabled="!isConnected">
                 Tx Ping
               </button>
-              <button class="action-btn outline" @click="sendGetTime" :disabled="!isConnected">
-                Req Time
+              <button
+                class="action-btn outline"
+                @click="sendUnknownMethod"
+                :disabled="!isConnected"
+              >
+                Unknown Method
               </button>
-              <button class="action-btn outline" @click="sendEcho" :disabled="!isConnected">
-                Test Echo
+              <button
+                class="action-btn outline"
+                @click="sendExecutionError"
+                :disabled="!isConnected"
+              >
+                Execution Error
               </button>
-              <button class="action-btn outline" @click="sendGetData" :disabled="!isConnected">
-                Req Data
+              <button class="action-btn outline" @click="sendNotify" :disabled="!isConnected">
+                Send Notify
               </button>
             </div>
           </div>
@@ -540,11 +554,17 @@ onUnmounted(() => {
 }
 
 .checkbox-container {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   cursor: pointer;
   user-select: none;
+  transition: opacity 0.3s ease;
+}
+
+.checkbox-container.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .checkbox-container input {
@@ -555,41 +575,76 @@ onUnmounted(() => {
   width: 0;
 }
 
-.checkmark {
-  height: 16px;
-  width: 16px;
+.toggle-switch {
+  position: relative;
+  width: 40px;
+  height: 20px;
   background-color: var(--bg-color);
   border: 1px solid var(--border-color);
-  position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  padding: 2px;
 }
 
-.checkbox-container:hover input ~ .checkmark {
+.toggle-knob {
+  width: 14px;
+  height: 14px;
+  background-color: var(--text-secondary);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(0);
+}
+
+.checkbox-container:hover input:not(:disabled) ~ .toggle-switch {
   border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(249, 115, 22, 0.2);
 }
 
-.checkbox-container input:checked ~ .checkmark {
+.checkbox-container:hover input:not(:disabled) ~ .toggle-switch .toggle-knob {
   background-color: var(--accent);
+  box-shadow: 0 0 4px var(--accent);
+}
+
+.checkbox-container input:checked ~ .toggle-switch {
   border-color: var(--accent);
+  background-color: rgba(249, 115, 22, 0.1);
 }
 
-.checkmark:after {
-  content: '';
-  position: absolute;
-  display: none;
+.checkbox-container input:checked ~ .toggle-switch .toggle-knob {
+  transform: translateX(20px);
+  background-color: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
 }
 
-.checkbox-container input:checked ~ .checkmark:after {
-  display: block;
+.checkbox-container input:disabled ~ .toggle-switch {
+  border-color: var(--border-color);
+  background-color: rgba(0, 0, 0, 0.2);
 }
 
-.checkbox-container .checkmark:after {
-  left: 5px;
-  top: 2px;
-  width: 3px;
-  height: 8px;
-  border: solid var(--bg-color);
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+.checkbox-container input:disabled ~ .toggle-switch .toggle-knob {
+  background-color: var(--border-color);
+  box-shadow: none;
+}
+
+.checkbox-container input:focus-visible ~ .toggle-switch {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.toggle-label {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  letter-spacing: 1px;
+  transition: color 0.3s ease;
+}
+
+.checkbox-container.disabled .toggle-label {
+  color: var(--text-secondary);
+}
+
+.checkbox-container:hover input:not(:disabled) ~ .toggle-label {
+  color: var(--accent);
 }
 
 .button-group,
@@ -769,15 +824,15 @@ onUnmounted(() => {
   background: #4ec9b0;
   color: #000;
 }
-.log-method.get_time {
+.log-method.unknown_method {
   background: #d4a90d;
   color: #000;
 }
-.log-method.echo {
+.log-method.execute_error {
   background: #a200ff;
   color: #fff;
 }
-.log-method.get_data {
+.log-method.notification {
   background: #ff5500;
   color: #000;
 }

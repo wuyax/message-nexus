@@ -66,7 +66,7 @@ import { RouterLink, RouterView } from 'vue-router'
 .header-content {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 16px 24px;
+  padding: 16px 0;
   display: flex;
   justify-content: space-between;
   align-items: center;

@@ -30,15 +30,13 @@ function addLog(type: string, payload: unknown) {
 }
 
 // Listen for commands from parent
-nexus.onNotify((data) => {
-  addLog('NOTIFY', data)
+nexus.onNotification('Notify', (params, context) => {
+  addLog('NOTIFY', { params, context })
 })
 
-nexus.onCommand((data) => {
-  addLog('COMMAND', data)
-
-  // Reply with success
-  nexus.reply(String(data.payload.id), { current_time: new Date().toISOString() })
+nexus.handle('get_data_from_iframe', (params, context) => {
+  addLog('COMMAND', { params, context })
+  return { current_time: new Date().toISOString() }
 })
 
 // Listen for errors

@@ -39,7 +39,7 @@ function sendRequest() {
     addLog('Request', 'sent', payload)
 
     nexusRef.value
-      .request({
+      .invoke({
         method: 'PING',
         params: payload,
       })
@@ -87,15 +87,15 @@ function reconnect(should_open_new_tab: boolean = true) {
   const nexus = new MessageNexus(driver)
   nexusRef.value = nexus
 
-  nexus.onNotify((data) => {
-    console.log('🚀 ~ reconnect ~ notify:', data)
-    addLog(data.payload.method, 'received', data)
+  nexus.onNotification('Notify', (params, context) => {
+    console.log('🚀 ~ notify:', params, context)
+    addLog('Notify', 'received', params)
   })
 
-  nexus.onCommand((data) => {
-    console.log('🚀 ~ reconnect ~ data:', data)
-    addLog(data.payload.method, 'received', data)
-    nexus.reply(String(data.payload.id), { message: 'data received' })
+  nexus.handle('PING', (params, context) => {
+    console.log('🚀 ~ data:', params, context)
+    addLog('PING', 'received', params)
+    return { message: 'data received' }
   })
 
   nexus.onError((error) => {

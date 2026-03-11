@@ -8,14 +8,32 @@ import { emitter } from '../assets/utils'
 const driver = new MittDriver(emitter)
 const nexus = new MessageNexus(driver, { instanceId: 'myBridgeId', loggerEnabled: true })
 let messageId = ref<string[]>([])
-nexus.onCommand((data) => {
-  console.log(data)
-  messageId.value.push(String(data.payload.id))
+
+// Store resolvers to manually control when the Promise resolves
+const pendingResolvers = new Map<string, (value: any) => void>()
+
+nexus.handle('scence.create', (params, context) => {
+  console.log('🚀 ~ data:', params, context)
+
+  return new Promise((resolve) => {
+    const id = context.messageId || Math.random().toString(36).substring(7)
+    messageId.value.push(id)
+
+    // Store the resolve function so we can call it later when user clicks
+    pendingResolvers.set(id, resolve)
+  })
 })
 
 function send(id: string) {
   try {
-    nexus.reply(id, { result: 'success' })
+    const resolve = pendingResolvers.get(id)
+    if (resolve) {
+      // Calling resolve() will unblock the handle() promise and trigger auto-reply
+      resolve({ result: 'success' })
+      pendingResolvers.delete(id)
+    }
+
+    // Remove from UI list
     messageId.value = messageId.value.filter((item) => item !== id)
   } catch (error) {
     console.log(error)

@@ -43,7 +43,7 @@ function sendRequest() {
     addLog('Request', 'sent', payload)
 
     nexusRef.value
-      .request({
+      .invoke({
         method: 'get_data_from_iframe',
         params: payload,
 
@@ -98,8 +98,10 @@ onMounted(() => {
   const nexus = new MessageNexus(driver)
   nexusRef.value = nexus
 
-  nexus.onCommand((data) => {
-    addLog('Command', 'received', data)
+  nexus.handle('PING', (params, context) => {
+    console.log('🚀 ~ data:', params, context)
+    addLog('PING', 'received', params)
+    return { message: 'data received' }
   })
 
   nexus.onError((error) => {
