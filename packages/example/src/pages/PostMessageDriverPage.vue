@@ -68,18 +68,14 @@ function sendCommand() {
     return
   }
 
-  try {
-    const payload = JSON.parse(requestPayload.value)
-    addLog('Notify', 'sent', payload)
-    nexusRef.value.notify({
-      method: 'Notify',
-      params: payload,
+  const payload = { type: 'fixed_notify', timestamp: Date.now() }
+  addLog('Notify', 'sent', payload)
+  nexusRef.value.notify({
+    method: 'Notify',
+    params: payload,
 
-      to: 'iframe-demo',
-    })
-  } catch (e) {
-    addLog('Error', 'sent', { error: 'Invalid JSON payload' })
-  }
+    to: 'iframe-demo',
+  })
 }
 
 function clearLogs() {
