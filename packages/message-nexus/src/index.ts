@@ -12,14 +12,14 @@ import WebSocketDriver from './drivers/WebSocktDriver'
 import { Logger, LoggerInterface, createConsoleHandler, isLogger } from './utils/logger'
 import { createEmitter } from './utils/emitter'
 
-interface MessageNexusOptions {
+export interface MessageNexusOptions {
   instanceId?: string
   timeout?: number
   logger?: LoggerInterface
   loggerEnabled?: boolean
 }
 
-interface RequestOptions {
+export interface InvokeOptions {
   method: string
   params?: unknown
   to?: string
@@ -29,8 +29,26 @@ interface RequestOptions {
   retryDelay?: number
 }
 
-export type CommandMessage = NexusEnvelope<JsonRpcRequest>
-export type NotifyMessage = NexusEnvelope<JsonRpcNotification>
+export interface NotificationOptions {
+  method: string
+  params?: unknown
+  to?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface InvokeContext {
+  messageId?: string
+  from: string
+  to?: string
+  metadata?: Record<string, unknown>
+}
+
+export type InvokeHandler<Params = any, Result = any> = (
+  params: Params,
+  context: InvokeContext,
+) => Result | Promise<Result>
+
+export type NotificationHandler<Params = any> = (params: Params, context: InvokeContext) => void
 
 export type ErrorHandler = (error: Error, context?: Record<string, unknown>) => void
 
@@ -46,21 +64,20 @@ export interface Metrics {
 
 export type MetricsCallback = (metrics: Metrics) => void
 
-export default class MessageNexus<RequestPayload = unknown, ResponsePayload = unknown> {
+export default class MessageNexus<GlobalRequestPayload = unknown, GlobalResponsePayload = unknown> {
   driver: BaseDriver
   pendingTasks: Map<
     string,
     {
-      resolve: (value: ResponsePayload) => void
+      resolve: (value: any) => void
       reject: (reason?: unknown) => void
       timer: ReturnType<typeof setTimeout>
       to?: string
       timestamp: number
     }
   >
-  incomingMessages: Map<string, { from: string; method: string; timestamp: number }>
-  messageHandlers: Set<(data: CommandMessage) => void>
-  notifyHandlers: Set<(data: NotifyMessage) => void>
+  invokeHandlers: Map<string, InvokeHandler>
+  notificationHandlers: Map<string, Set<NotificationHandler>>
   timeout: number
   instanceId: string
   private cleanupInterval: ReturnType<typeof setInterval> | null = null
@@ -100,24 +117,14 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
       })
     }
     this.pendingTasks = new Map()
-    this.incomingMessages = new Map()
-    this.messageHandlers = new Set()
-    this.notifyHandlers = new Set()
+    this.invokeHandlers = new Map()
+    this.notificationHandlers = new Map()
     this.cleanupInterval = null
 
     this.driver.onMessage = (data) => this._handleIncoming(data)
-
-    this.cleanupInterval = window.setInterval(() => {
-      const now = Date.now()
-      for (const [id, msg] of this.incomingMessages.entries()) {
-        if (now - msg.timestamp > this.timeout * 2) {
-          this.incomingMessages.delete(id)
-        }
-      }
-    }, 60000)
   }
 
-  async request(methodOrOptions: string | RequestOptions): Promise<ResponsePayload> {
+  async invoke<T = GlobalResponsePayload>(methodOrOptions: string | InvokeOptions): Promise<T> {
     const id = crypto.randomUUID()
 
     let method: string
@@ -145,8 +152,8 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
       retryDelay = opts.retryDelay ?? 1000
     }
 
-    const attempt = async (attemptNumber: number): Promise<ResponsePayload> => {
-      return new Promise<ResponsePayload>((resolve, reject) => {
+    const attempt = async (attemptNumber: number): Promise<T> => {
+      return new Promise<T>((resolve, reject) => {
         const timer = setTimeout(() => {
           this.pendingTasks.delete(id)
           this.metrics.messagesFailed++
@@ -173,7 +180,7 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
         this._sendMessage(message)
       }).catch((error) => {
         if (attemptNumber < retryCount) {
-          return new Promise<ResponsePayload>((resolve) =>
+          return new Promise<T>((resolve) =>
             setTimeout(() => resolve(attempt(attemptNumber + 1)), retryDelay * (attemptNumber + 1)),
           )
         }
@@ -244,7 +251,7 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
     }
   }
 
-  notify(methodOrOptions: string | Omit<RequestOptions, 'timeout' | 'retryCount' | 'retryDelay'>) {
+  notify(methodOrOptions: string | NotificationOptions) {
     let method: string
     let params: unknown
     let to: string | undefined
@@ -299,7 +306,7 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
     return true
   }
 
-  _handleIncoming(data: unknown) {
+  async _handleIncoming(data: unknown) {
     if (!this._validateMessage(data)) {
       this.logger.error('Invalid message format received', { data })
       this.errorHandler?.(new Error('Invalid message format received'), { data })
@@ -342,7 +349,7 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
           ;(err as any).data = response.error.data
           reject(err)
         } else {
-          resolve(response.result as ResponsePayload)
+          resolve(response.result)
         }
 
         this._notifyMetrics()
@@ -357,22 +364,32 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
         const request = payload as JsonRpcRequest
         const id = String(request.id)
 
-        this.logger.debug('Command message received', {
+        this.logger.debug('Invoke message received', {
           messageId: id,
           type: request.method,
           from: envelope.from,
         })
-        this.incomingMessages.set(id, {
-          from: envelope.from,
-          method: request.method,
-          timestamp: Date.now(),
-        })
 
-        const commandMessage: CommandMessage = {
-          ...envelope,
-          payload: request,
+        const context: InvokeContext = {
+          messageId: id,
+          from: envelope.from,
+          to: envelope.to,
+          metadata: envelope.metadata,
         }
-        this.messageHandlers.forEach((handler) => handler(commandMessage))
+
+        const handler = this.invokeHandlers.get(request.method)
+        if (handler) {
+          try {
+            const result = await handler(request.params, context)
+            this._reply(id, envelope.from, result)
+          } catch (error) {
+            this._replyError(id, envelope.from, error)
+          }
+        } else {
+          const err = new Error(`Method not found: ${request.method}`)
+          ;(err as any).code = -32601 // JSON-RPC Method not found
+          this._replyError(id, envelope.from, err)
+        }
       } else {
         const notification = payload as JsonRpcNotification
 
@@ -381,11 +398,22 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
           from: envelope.from,
         })
 
-        const notifyMessage: NotifyMessage = {
-          ...envelope,
-          payload: notification,
+        const context: InvokeContext = {
+          from: envelope.from,
+          to: envelope.to,
+          metadata: envelope.metadata,
         }
-        this.notifyHandlers.forEach((handler) => handler(notifyMessage))
+
+        const handlers = this.notificationHandlers.get(notification.method)
+        if (handlers) {
+          handlers.forEach((handler) => {
+            try {
+              handler(notification.params, context)
+            } catch (error) {
+              this.logger.error('Error in notification handler', { error: String(error) })
+            }
+          })
+        }
       }
     }
   }
@@ -404,51 +432,71 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
     this.metricsCallbacks.forEach((callback) => callback(metrics))
   }
 
-  onCommand(handler: (data: CommandMessage) => void) {
-    this.messageHandlers.add(handler)
-    return () => this.messageHandlers.delete(handler)
-  }
-
-  onNotify(handler: (data: NotifyMessage) => void) {
-    this.notifyHandlers.add(handler)
-    return () => this.notifyHandlers.delete(handler)
-  }
-
-  reply(messageId: string, payload: unknown, error?: unknown) {
-    const incoming = this.incomingMessages.get(messageId)
-    if (!incoming) {
-      throw new Error(`Message not found: ${messageId}`)
+  handle<Params = any, Result = any>(method: string, handler: InvokeHandler<Params, Result>) {
+    if (this.invokeHandlers.has(method)) {
+      this.logger.warn(`Overriding existing handler for method: ${method}`)
     }
+    this.invokeHandlers.set(method, handler)
+    return () => this.invokeHandlers.delete(method)
+  }
 
-    let rpcResponse: JsonRpcResponse
+  removeHandler(method: string) {
+    this.invokeHandlers.delete(method)
+  }
 
-    if (error) {
-      const err = error instanceof Error ? error : new Error(String(error))
-      rpcResponse = {
-        jsonrpc: '2.0',
-        id: messageId,
-        error: {
-          code: (err as any).code || -32000,
-          message: err.message,
-          data: (err as any).data,
-        },
+  onNotification<Params = any>(method: string, handler: NotificationHandler<Params>) {
+    if (!this.notificationHandlers.has(method)) {
+      this.notificationHandlers.set(method, new Set())
+    }
+    this.notificationHandlers.get(method)!.add(handler)
+    return () => this.offNotification(method, handler)
+  }
+
+  offNotification(method: string, handler: NotificationHandler<any>) {
+    const handlers = this.notificationHandlers.get(method)
+    if (handlers) {
+      handlers.delete(handler)
+      if (handlers.size === 0) {
+        this.notificationHandlers.delete(method)
       }
-    } else {
-      rpcResponse = {
-        jsonrpc: '2.0',
-        id: messageId,
-        result: payload,
-      }
+    }
+  }
+
+  private _reply(messageId: string, to: string, payload: unknown) {
+    const rpcResponse: JsonRpcResponse = {
+      jsonrpc: '2.0',
+      id: messageId,
+      result: payload,
     }
 
     const message: Message = {
       from: this.instanceId,
-      to: incoming.from,
+      to,
       payload: rpcResponse,
     }
 
     this.driver.send(message)
-    this.incomingMessages.delete(messageId)
+  }
+
+  private _replyError(messageId: string, to: string, error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error))
+    const rpcResponse: JsonRpcResponse = {
+      jsonrpc: '2.0',
+      id: messageId,
+      error: {
+        code: (err as any).code || -32000,
+        message: err.message,
+        data: (err as any).data,
+      },
+    }
+
+    const message: Message = {
+      from: this.instanceId,
+      to,
+      payload: rpcResponse,
+    }
+
+    this.driver.send(message)
   }
 
   destroy() {
@@ -466,7 +514,8 @@ export default class MessageNexus<RequestPayload = unknown, ResponsePayload = un
       this.cleanupInterval = null
     }
 
-    this.messageHandlers.clear()
+    this.invokeHandlers.clear()
+    this.notificationHandlers.clear()
     this.metricsCallbacks.clear()
   }
 }
@@ -479,4 +528,4 @@ export {
   WebSocketDriver,
   createEmitter,
 }
-export type { MessageNexusOptions, RequestOptions, Message, LoggerInterface }
+export type { Message, LoggerInterface }
