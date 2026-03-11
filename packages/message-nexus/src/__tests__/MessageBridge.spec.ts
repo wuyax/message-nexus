@@ -19,12 +19,12 @@ describe('MessageNexus', () => {
     vi.restoreAllMocks()
   })
 
-  describe('request', () => {
-    it('should send request message with correct format', async () => {
+  describe('invoke', () => {
+    it('should send invoke message with correct format', async () => {
       vi.useFakeTimers()
       const sendSpy = vi.spyOn(mockDriver, 'send')
 
-      const promise = bridge.request({ method: 'TEST_ACTION', params: { data: 'test' } })
+      const promise = bridge.invoke({ method: 'TEST_ACTION', params: { data: 'test' } })
 
       expect(sendSpy).toHaveBeenCalledWith({
         from: bridge.instanceId,
@@ -43,11 +43,11 @@ describe('MessageNexus', () => {
       await promise.catch(() => {})
     })
 
-    it('should handle string request', async () => {
+    it('should handle string invoke', async () => {
       vi.useFakeTimers()
       const sendSpy = vi.spyOn(mockDriver, 'send')
 
-      const promise = bridge.request('TEST_ACTION')
+      const promise = bridge.invoke('TEST_ACTION')
 
       expect(sendSpy).toHaveBeenCalledWith({
         from: bridge.instanceId,
@@ -68,7 +68,8 @@ describe('MessageNexus', () => {
 
     it('should timeout after specified time', async () => {
       vi.useFakeTimers()
-      const promise = bridge.request({ method: 'TEST_ACTION', timeout: 100 })
+      vi.spyOn(mockDriver, 'send').mockImplementation(() => {})
+      const promise = bridge.invoke({ method: 'TEST_ACTION', timeout: 100 })
 
       vi.advanceTimersByTime(100)
 
@@ -76,13 +77,14 @@ describe('MessageNexus', () => {
     })
   })
 
-  describe('onCommand', () => {
-    it('should register and call message handler', () => {
-      const handler = vi.fn()
+  describe('handle', () => {
+    it('should register and call method handler and auto-reply', async () => {
+      const handler = vi.fn().mockResolvedValue({ result: 'success' })
+      const sendSpy = vi.spyOn(mockDriver, 'send')
 
-      const unregister = bridge.onCommand(handler)
+      const unregister = bridge.handle('TEST_COMMAND', handler)
 
-      mockDriver.onMessage?.({
+      await bridge._handleIncoming({
         from: 'sender',
         payload: {
           jsonrpc: '2.0',
@@ -92,7 +94,31 @@ describe('MessageNexus', () => {
         },
       } as any)
 
-      expect(handler).toHaveBeenCalledWith({
+      expect(handler).toHaveBeenCalledWith(
+        { data: 'test' },
+        { messageId: 'test-id', from: 'sender', to: undefined, metadata: undefined },
+      )
+
+      expect(sendSpy).toHaveBeenCalledWith({
+        from: bridge.instanceId,
+        to: 'sender',
+        payload: {
+          jsonrpc: '2.0',
+          id: 'test-id',
+          result: { result: 'success' },
+        },
+      })
+
+      unregister()
+    })
+
+    it('should reply with error if handler throws', async () => {
+      const handler = vi.fn().mockRejectedValue(new Error('Handler failed'))
+      const sendSpy = vi.spyOn(mockDriver, 'send')
+
+      bridge.handle('TEST_COMMAND', handler)
+
+      await bridge._handleIncoming({
         from: 'sender',
         payload: {
           jsonrpc: '2.0',
@@ -100,18 +126,30 @@ describe('MessageNexus', () => {
           params: { data: 'test' },
           id: 'test-id',
         },
-      })
+      } as any)
 
-      unregister()
+      expect(sendSpy).toHaveBeenCalledWith({
+        from: bridge.instanceId,
+        to: 'sender',
+        payload: {
+          jsonrpc: '2.0',
+          id: 'test-id',
+          error: {
+            code: -32000,
+            message: 'Handler failed',
+            data: undefined,
+          },
+        },
+      })
     })
 
-    it('should allow unregistering handler', () => {
+    it('should allow unregistering handler', async () => {
       const handler = vi.fn()
 
-      const unregister = bridge.onCommand(handler)
+      const unregister = bridge.handle('TEST_COMMAND', handler)
       unregister()
 
-      mockDriver.onMessage?.({
+      await bridge._handleIncoming({
         from: 'sender',
         payload: {
           jsonrpc: '2.0',
@@ -122,6 +160,34 @@ describe('MessageNexus', () => {
       } as any)
 
       expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should reply with MethodNotFound when no handler exists', async () => {
+      const sendSpy = vi.spyOn(mockDriver, 'send')
+
+      await bridge._handleIncoming({
+        from: 'sender',
+        payload: {
+          jsonrpc: '2.0',
+          method: 'UNKNOWN_COMMAND',
+          params: { data: 'test' },
+          id: 'test-id',
+        },
+      } as any)
+
+      expect(sendSpy).toHaveBeenCalledWith({
+        from: bridge.instanceId,
+        to: 'sender',
+        payload: {
+          jsonrpc: '2.0',
+          id: 'test-id',
+          error: {
+            code: -32601,
+            message: 'Method not found: UNKNOWN_COMMAND',
+            data: undefined,
+          },
+        },
+      })
     })
   })
 
@@ -161,10 +227,10 @@ describe('MessageNexus', () => {
     })
   })
 
-  describe('onNotify', () => {
+  describe('onNotification', () => {
     it('should register and call notification handler', () => {
       const handler = vi.fn()
-      const unregister = bridge.onNotify(handler)
+      const unregister = bridge.onNotification('TEST_NOTIFY', handler)
 
       mockDriver.onMessage?.({
         from: 'sender',
@@ -175,29 +241,24 @@ describe('MessageNexus', () => {
         },
       } as any)
 
-      expect(handler).toHaveBeenCalledWith({
-        from: 'sender',
-        payload: {
-          jsonrpc: '2.0',
-          method: 'TEST_NOTIFY',
-          params: { data: 'test' },
-        },
-      })
+      expect(handler).toHaveBeenCalledWith(
+        { data: 'test' },
+        { from: 'sender', to: undefined, metadata: undefined },
+      )
 
       unregister()
     })
 
-    it('should not call notification handler for command messages', () => {
+    it('should not call notification handler for different methods', () => {
       const handler = vi.fn()
-      const unregister = bridge.onNotify(handler)
+      const unregister = bridge.onNotification('TEST_NOTIFY', handler)
 
       mockDriver.onMessage?.({
         from: 'sender',
         payload: {
           jsonrpc: '2.0',
-          method: 'TEST_COMMAND',
+          method: 'OTHER_NOTIFY',
           params: { data: 'test' },
-          id: 'test-id',
         },
       } as any)
 
@@ -207,45 +268,13 @@ describe('MessageNexus', () => {
     })
   })
 
-  describe('reply', () => {
-    it('should send response message', () => {
-      const sendSpy = vi.spyOn(mockDriver, 'send')
-
-      mockDriver.onMessage?.({
-        from: 'sender',
-        payload: {
-          jsonrpc: '2.0',
-          method: 'TEST_COMMAND',
-          params: { data: 'test' },
-          id: 'test-id',
-        },
-      } as any)
-
-      bridge.reply('test-id', { result: 'success' })
-
-      expect(sendSpy).toHaveBeenCalledWith({
-        from: bridge.instanceId,
-        to: 'sender',
-        payload: {
-          jsonrpc: '2.0',
-          id: 'test-id',
-          result: { result: 'success' },
-        },
-      })
-    })
-
-    it('should throw error for unknown messageId', () => {
-      expect(() => bridge.reply('unknown-id', { result: 'success' })).toThrow('Message not found')
-    })
-  })
-
-  describe('request/response flow', () => {
-    it('should complete request-response cycle', async () => {
+  describe('invoke/response flow', () => {
+    it('should complete invoke-response cycle', async () => {
       vi.useFakeTimers()
       const responsePayload = { result: 'success' }
 
-      const sendSpy = vi.spyOn(mockDriver, 'send')
-      const promise = bridge.request({ method: 'TEST_ACTION', params: { query: 'test' } })
+      vi.spyOn(mockDriver, 'send').mockImplementation(() => {})
+      const promise = bridge.invoke({ method: 'TEST_ACTION', params: { query: 'test' } })
 
       vi.advanceTimersByTime(0)
 
@@ -304,7 +333,7 @@ describe('MessageNexus', () => {
         throw new Error('Send failed')
       })
 
-      bridge.request('TEST_ACTION')
+      bridge.invoke('TEST_ACTION')
 
       expect(bridge['messageQueue'].length).toBeGreaterThan(0)
     })
@@ -314,42 +343,13 @@ describe('MessageNexus', () => {
         throw new Error('Send failed')
       })
 
-      bridge.request('TEST_ACTION')
+      bridge.invoke('TEST_ACTION')
       expect(bridge['messageQueue'].length).toBeGreaterThan(0)
 
       vi.spyOn(mockDriver, 'send').mockImplementation(() => {})
       bridge.flushQueue()
 
       expect(bridge['messageQueue'].length).toBe(0)
-    })
-  })
-
-  describe('memory leak prevention', () => {
-    it('should cleanup incomingMessages periodically', () => {
-      mockDriver.onMessage?.({
-        from: 'sender',
-        payload: {
-          jsonrpc: '2.0',
-          method: 'TEST_COMMAND',
-          id: 'test-id',
-        },
-      } as any)
-
-      expect(bridge['incomingMessages'].has('test-id')).toBe(true)
-
-      bridge.reply('test-id', { result: 'success' })
-
-      expect(bridge['incomingMessages'].has('test-id')).toBe(false)
-    })
-  })
-
-  describe('destroy', () => {
-    it('should cleanup intervals', () => {
-      const clearIntervalSpy = vi.spyOn(window, 'clearInterval')
-
-      bridge.destroy()
-
-      expect(clearIntervalSpy).toHaveBeenCalled()
     })
   })
 })
