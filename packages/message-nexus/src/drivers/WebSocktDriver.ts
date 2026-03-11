@@ -14,6 +14,7 @@ export interface WebSocketDriverOptions {
   url: string
   reconnect?: boolean | ReconnectOptions
   logger?: Logger
+  onStatusChange?: (status: 'connecting' | 'connected' | 'disconnected' | 'error') => void
 }
 
 export default class WebSocketDriver extends BaseDriver {
@@ -26,6 +27,7 @@ export default class WebSocketDriver extends BaseDriver {
   private reconnectTimer: number | null = null
   private isManuallyClosed: boolean = false
   private logger: Logger
+  private onStatusChange?: (status: 'connecting' | 'connected' | 'disconnected' | 'error') => void
 
   constructor(options: WebSocketDriverOptions) {
     super()
@@ -38,16 +40,19 @@ export default class WebSocketDriver extends BaseDriver {
 
     this.logger = options.logger || new Logger('WebSocketDriver')
     this.logger.addHandler(createConsoleHandler())
+    this.onStatusChange = options.onStatusChange
 
     this.connect()
   }
 
   private connect() {
+    this.onStatusChange?.('connecting')
     this.ws = new WebSocket(this.url)
 
     this.ws.addEventListener('open', () => {
       this.logger.info('WebSocket connected', { url: this.url })
       this.retryCount = 0
+      this.onStatusChange?.('connected')
     })
 
     this.ws.addEventListener('message', (event) => {
@@ -73,6 +78,7 @@ export default class WebSocketDriver extends BaseDriver {
 
     this.ws.addEventListener('error', (event) => {
       this.logger.error('WebSocket error', { event })
+      this.onStatusChange?.('error')
     })
 
     this.ws.addEventListener('close', () => {
@@ -84,6 +90,8 @@ export default class WebSocketDriver extends BaseDriver {
 
       if (!this.isManuallyClosed && this.reconnectEnabled && this.retryCount < this.maxRetries) {
         this.scheduleReconnect()
+      } else {
+        this.onStatusChange?.('disconnected')
       }
     })
   }
@@ -98,6 +106,8 @@ export default class WebSocketDriver extends BaseDriver {
       maxRetries: this.maxRetries,
       url: this.url,
     })
+
+    this.onStatusChange?.('connecting')
 
     this.reconnectTimer = window.setTimeout(() => {
       this.connect()
@@ -131,6 +141,7 @@ export default class WebSocketDriver extends BaseDriver {
       this.ws.close()
       this.ws = null
     }
+    this.onStatusChange?.('disconnected')
   }
 
   destroy() {

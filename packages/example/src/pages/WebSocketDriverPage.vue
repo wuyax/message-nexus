@@ -75,6 +75,13 @@ function connect() {
     const driver = new WebSocketDriver({
       url: wsUrl.value,
       reconnect: reconnectEnabled.value,
+      onStatusChange: (status) => {
+        connectionStatus.value = status
+        isConnected.value = status === 'connected'
+        if (status === 'connected') {
+          addLog('System', 'received', { message: 'Connected to WebSocket server' })
+        }
+      },
     })
 
     driverRef.value = driver
@@ -103,12 +110,6 @@ function connect() {
     nexus.onMetrics(() => {
       updateMetrics()
     })
-
-    setTimeout(() => {
-      isConnected.value = true
-      connectionStatus.value = 'connected'
-      addLog('System', 'received', { message: 'Connected to WebSocket server' })
-    }, 500)
   } catch (error) {
     connectionStatus.value = 'error'
     addLog('Error', 'received', { error: (error as Error).message })
