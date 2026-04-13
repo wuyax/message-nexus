@@ -1,8 +1,8 @@
-import mitt, { type Emitter } from 'mitt'
+import mitt, { type Emitter, type EventType } from 'mitt'
 import type { Message } from '../drivers/BaseDriver'
 
-export { type Emitter }
+export { type Emitter, type EventType }
 
 export function createEmitter() {
-  return mitt<Record<string, Message>>()
+  return mitt<Record<EventType, Message>>()
 }
