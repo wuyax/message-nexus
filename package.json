@@ -15,9 +15,13 @@
     "test:task-scheduler": "pnpm --filter task-scheduler test",
     "type-check": "pnpm --filter message-nexus type-check",
     "lint": "prettier --write --experimental-cli \"packages/*/src/**/*.{ts,vue}\"",
-    "clean": "pnpm --filter ./packages/** -r clean && rm -rf node_modules"
+    "clean": "pnpm --filter ./packages/** -r clean && rm -rf node_modules",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build:deps && changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.30.0",
     "prettier": "3.8.1",
     "tsup": "^8.4.0",
     "typescript": "~5.9.3"
