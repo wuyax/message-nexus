@@ -4,10 +4,12 @@ A unified, type-safe cross-context message communication library supporting mult
 
 ## Monorepo Structure
 
-This is a monorepo project using pnpm workspaces, containing the following packages:
+This project uses pnpm workspaces and contains the following packages:
 
-- **`packages/message-nexus`**: Core npm package
-- **`packages/example`**: Vue3 example application for validation and demonstration
+- **`packages/message-nexus`**: Core communication library (the main npm package).
+- **`packages/task-scheduler`**: Performance-optimized task scheduler for Three.js 3D scenes.
+- **`packages/example`**: Vue3 application demonstrating and validating all transport drivers.
+- **`packages/server`**: Node.js WebSocket server for testing network communication.
 
 ## Quick Start
 
@@ -19,152 +21,91 @@ pnpm install
 
 ### Development
 
-Start the Vue3 example application (Hot Module Replacement):
-
+Start the Vue3 example application:
 ```bash
 pnpm dev
+```
+
+Start the WebSocket test server:
+```bash
+pnpm dev:ws
 ```
 
 ### Build
 
 Build all packages:
-
 ```bash
 pnpm build
 ```
 
-Build the core package only:
-
+Build only core libraries (`message-nexus` & `task-scheduler`):
 ```bash
-pnpm build:core
-```
-
-Build the example application only:
-
-```bash
-pnpm build:example
+pnpm build:deps
 ```
 
 ### Test
 
-Run tests (watch mode):
-
+Run `message-nexus` tests (watch mode):
 ```bash
 pnpm test
 ```
 
-Run tests (single run):
-
+Run `message-nexus` tests (single run):
 ```bash
 pnpm test:run
 ```
 
-### Type Check
+Run `task-scheduler` tests:
+```bash
+pnpm test:task-scheduler
+```
+
+### Maintenance
 
 ```bash
+# Type check core library
 pnpm type-check
-```
 
-### Format Code
-
-```bash
+# Format code across all packages
 pnpm lint
+
+# Clean all build artifacts and node_modules
+pnpm clean
 ```
 
-## message-nexus
+## Features
 
-Core message communication library, supporting the following features:
+### message-nexus
 
-- **Unified Interface**: Supports Mitt (in-process), PostMessage (iframe/window), BroadcastChannel (cross-tab), and WebSocket (network communication)
-- **JSON-RPC 2.0 Compliance**: Strict adherence to the JSON-RPC 2.0 specification for standardized communication
-- **Envelope Pattern**: Extensible message envelope containing routing information (from, to) and metadata
-- **Type Safety**: Full TypeScript support with generic type inference
-- **Request-Response Pattern**: Promise-style asynchronous communication with built-in timeout protection
-- **Auto Reconnect**: WebSocket automatic reconnection mechanism with exponential backoff support
-- **Message Queue**: Offline message caching, automatically sent after connection recovery
-- **Retry Mechanism**: Automatic retry on request failure, configurable retry counts and delays
-- **Message Validation**: Runtime message format validation to prevent illegal messages
-- **Monitoring Metrics**: Built-in message statistics and performance monitoring
-- **Structured Logging**: Supports custom log handlers for easy debugging and production monitoring
+- **Multi-Protocol**: Unified API for Mitt, PostMessage, BroadcastChannel, and WebSocket.
+- **JSON-RPC 2.0**: Standardized communication protocol.
+- **Type Safety**: End-to-end TypeScript support.
+- **Reliability**: Auto-reconnect, message queuing, and retry mechanisms.
+- **Monitoring**: Built-in metrics and structured logging.
 
-### Usage Example
+### task-scheduler
 
-```typescript
-import { createEmitter, MittDriver, MessageNexus } from 'message-nexus'
-
-// Create an independent emitter instance using the factory function
-const emitter = createEmitter()
-const driver = new MittDriver(emitter)
-const nexus = new MessageNexus(driver)
-
-// Send request
-const response = await nexus.invoke({
-  method: 'GET_DATA',
-  params: { id: 123 },
-})
-
-// Listen for commands
-const unsubscribe = nexus.handle('GET_DATA', (params, context) => {
-  return { name: 'test', value: 42 }
-})
-
-// Clean up resources (Important!)
-nexus.destroy()
-```
-
-For detailed API documentation, please refer to [packages/message-nexus](./packages/message-nexus/README.md).
-
-### Example Application
-
-The Vue3 example application includes the following demo pages:
-
-| Route          | Demo Content                                          |
-| -------------- | ----------------------------------------------------- |
-| `/`            | MittDriver - In-process communication                 |
-| `/postmessage` | PostMessageDriver - Cross-window/iframe communication |
-| `/broadcast`   | BroadcastDriver - Cross-tab communication             |
-
-Run the example:
-
-```bash
-pnpm dev
-```
-
-Then visit http://localhost:5173
-
-## Workspace Commands
-
-In the monorepo root, you can use the following commands to perform actions on specific workspaces:
-
-```bash
-# Run command in the message-nexus package
-pnpm --filter message-nexus <command>
-
-# Run command in the example package
-pnpm --filter @message-nexus/example <command>
-
-# Run command in all packages
-pnpm --filter ./packages/** <command>
-```
+- **3D Optimization**: Designed specifically for Three.js frame-budget management.
+- **Smart Scheduling**: Prioritize and throttle tasks to maintain high FPS.
 
 ## Publish Process
 
-### 1. Update Version
+We use [Changesets](https://github.com/changesets/changesets) for versioning and publishing.
 
+### 1. Generate Changeset
 ```bash
-pnpm --filter message-nexus version <major|minor|patch>
+pnpm changeset
+```
+Follow prompts to select packages and set the version bump level.
+
+### 2. Update Versions
+```bash
+pnpm version-packages
 ```
 
-### 2. Build Package
-
+### 3. Build & Publish
 ```bash
-pnpm build:core
-```
-
-### 3. Publish to npm
-
-```bash
-pnpm --filter message-nexus publish
+pnpm release
 ```
 
 ## License

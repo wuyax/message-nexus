@@ -164,11 +164,12 @@ new MessageNexus<RequestPayload, ResponsePayload>(
 
 **Options:**
 
-| Parameter  | Type   | Default Value  | Description                           |
-| ---------- | ------ | -------------- | ------------------------------------- |
-| instanceId | string | auto-generated | Instance ID, used for message routing |
-| timeout    | number | 10000          | Request timeout (milliseconds)        |
-| logger     | Logger | new Logger()   | Logger instance                       |
+| Parameter     | Type    | Default Value  | Description                           |
+| ------------- | ------- | -------------- | ------------------------------------- |
+| instanceId    | string  | auto-generated | Instance ID, used for message routing |
+| timeout       | number  | 10000          | Request timeout (milliseconds)        |
+| logger        | Logger  | new Logger()   | Logger instance                       |
+| loggerEnabled | boolean | false          | Whether to enable logging             |
 
 #### Methods
 
