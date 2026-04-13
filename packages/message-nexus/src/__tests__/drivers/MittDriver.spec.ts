@@ -16,13 +16,14 @@ describe('MittDriver', () => {
 
     const emitSpy = vi.spyOn(emitter, 'emit')
     const driver = new MittDriver(emitter as any)
-    driver.send({ id: 'test', type: 'test', from: 'sender' })
+    const message = {
+      jsonrpc: '2.0',
+      method: 'test',
+      params: {},
+    }
+    driver.send(message as any)
 
     expect(emitSpy).toHaveBeenCalled()
-    expect(emitSpy).toHaveBeenCalledWith(expect.anything(), {
-      id: 'test',
-      type: 'test',
-      from: 'sender',
-    })
+    expect(emitSpy).toHaveBeenCalledWith(expect.anything(), message)
   })
 })
