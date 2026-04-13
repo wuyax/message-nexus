@@ -9,14 +9,23 @@ import BroadcastDriver from './drivers/BroadcastDriver'
 import MittDriver from './drivers/MittDriver'
 import PostMessageDriver from './drivers/PostMessageDriver'
 import WebSocketDriver from './drivers/WebSocktDriver'
-import { Logger, LoggerInterface, createConsoleHandler, isLogger } from './utils/logger'
+import {
+  Logger,
+  LoggerInterface,
+  SimpleLogger,
+  LogLevel,
+  createConsoleHandler,
+  isLogger,
+  isSimpleLogger,
+} from './utils/logger'
 import { createEmitter } from './utils/emitter'
 
 export interface MessageNexusOptions {
   instanceId?: string
   timeout?: number
-  logger?: LoggerInterface
+  logger?: LoggerInterface | SimpleLogger
   loggerEnabled?: boolean
+  logLevel?: LogLevel
 }
 
 export interface InvokeOptions {
@@ -101,19 +110,33 @@ export default class MessageNexus<GlobalRequestPayload = unknown, GlobalResponse
     this.instanceId = options?.instanceId || crypto.randomUUID()
     this.timeout = options?.timeout ?? 10000
 
+    const logLevel = options?.logLevel ?? LogLevel.INFO
+    const loggerEnabled = options?.loggerEnabled ?? false
+
     if (options?.logger && isLogger(options.logger)) {
       this.logger = options.logger
     } else {
-      this.logger = new Logger('MessageNexus')
+      this.logger = new Logger('MessageNexus', logLevel, loggerEnabled)
+      if (options?.logger && isSimpleLogger(options.logger)) {
+        const simpleLogger = options.logger
+        this.logger.addHandler((entry) => {
+          const { level, message, metadata } = entry
+          if (level === LogLevel.DEBUG) simpleLogger.debug(message, metadata)
+          else if (level === LogLevel.INFO) simpleLogger.info(message, metadata)
+          else if (level === LogLevel.WARN) simpleLogger.warn(message, metadata)
+          else if (level === LogLevel.ERROR) simpleLogger.error(message, metadata)
+        })
+      } else if (loggerEnabled) {
+        this.logger.addHandler(createConsoleHandler())
+      }
     }
 
-    const loggerEnabled = options?.loggerEnabled ?? false
     if (loggerEnabled) {
       this.logger.enable()
-      this.logger.addHandler(createConsoleHandler())
       this.logger.info('MessageNexus initialized', {
         instanceId: this.instanceId,
         timeout: this.timeout,
+        logLevel,
       })
     }
     this.pendingTasks = new Map()
@@ -527,5 +550,6 @@ export {
   PostMessageDriver,
   WebSocketDriver,
   createEmitter,
+  LogLevel,
 }
-export type { Message, LoggerInterface }
+export type { Message, LoggerInterface, SimpleLogger }

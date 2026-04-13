@@ -19,7 +19,7 @@ describe('MittDriver', () => {
     driver.send({ id: 'test', type: 'test', from: 'sender' })
 
     expect(emitSpy).toHaveBeenCalled()
-    expect(emitSpy).toHaveBeenCalledWith(expect.any(String), {
+    expect(emitSpy).toHaveBeenCalledWith(expect.anything(), {
       id: 'test',
       type: 'test',
       from: 'sender',

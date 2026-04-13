@@ -15,29 +15,45 @@ export interface LogEntry {
 
 export type LogHandler = (entry: LogEntry) => void
 
-export interface LoggerInterface {
-  addHandler(handler: LogHandler): void
-  setMinLevel(level: LogLevel): void
-  enable(): void
-  disable(): void
-  isEnabled(): boolean
+export interface SimpleLogger {
   debug(message: string, metadata?: Record<string, unknown>): void
   info(message: string, metadata?: Record<string, unknown>): void
   warn(message: string, metadata?: Record<string, unknown>): void
   error(message: string, metadata?: Record<string, unknown>): void
 }
 
+export interface LoggerInterface extends SimpleLogger {
+  addHandler(handler: LogHandler): void
+  setMinLevel(level: LogLevel): void
+  enable(): void
+  disable(): void
+  isEnabled(): boolean
+}
+
 export function isLogger(value: unknown): value is LoggerInterface {
   if (value == null || typeof value !== 'object') return false
 
-  const logger = value as LoggerInterface
+  const logger = value as any
 
   return (
+    typeof logger.debug === 'function' &&
+    typeof logger.info === 'function' &&
+    typeof logger.warn === 'function' &&
+    typeof logger.error === 'function' &&
     typeof logger.addHandler === 'function' &&
     typeof logger.setMinLevel === 'function' &&
     typeof logger.enable === 'function' &&
     typeof logger.disable === 'function' &&
-    typeof logger.isEnabled === 'function' &&
+    typeof logger.isEnabled === 'function'
+  )
+}
+
+export function isSimpleLogger(value: unknown): value is SimpleLogger {
+  if (value == null || typeof value !== 'object') return false
+
+  const logger = value as any
+
+  return (
     typeof logger.debug === 'function' &&
     typeof logger.info === 'function' &&
     typeof logger.warn === 'function' &&
