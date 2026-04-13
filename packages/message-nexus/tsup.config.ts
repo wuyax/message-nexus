@@ -9,4 +9,9 @@ export default defineConfig({
   clean: true,
   external: ['mitt'],
   target: 'es2020',
+  minify: true,
+  minifyWhitespace: true,
+  minifyIdentifiers: true,
+  minifySyntax: true,
+  shims: true,
 })
