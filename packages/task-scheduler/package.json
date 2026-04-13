@@ -2,6 +2,7 @@
   "name": "task-scheduler",
   "version": "1.0.0",
   "description": "A powerful task scheduler for Three.js 3D scenes with performance optimization and debugging features",
+  "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
