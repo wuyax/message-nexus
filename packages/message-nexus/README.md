@@ -157,11 +157,16 @@ receiverNexus.handle('SYNC_STATE', (params, context) => {
 #### Constructor
 
 ```typescript
-new MessageNexus<RequestPayload, ResponsePayload>(
+new MessageNexus<InvokeMap, NotificationMap>(
   driver: BaseDriver,
   options?: MessageNexusOptions
 )
 ```
+
+**Generics:**
+
+- `InvokeMap`: A record mapping method names to `{ params: any; result: any }`. Defaults to `DefaultRegistry`.
+- `NotificationMap`: A record mapping notification method names to their parameter types. Defaults to `Record<string, any>`.
 
 **Options:**
 
@@ -193,15 +198,17 @@ interface SimpleLogger {
 Send request and wait for response.
 
 ```typescript
-nexus.invoke<T>(methodOrOptions: string | InvokeOptions): Promise<T>
+nexus.invoke<K extends keyof InvokeMap>(
+  methodOrOptions: K | InvokeOptions<K, InvokeMap[K]['params']>
+): Promise<InvokeMap[K]['result']>
 ```
 
 **Options:**
 
 | Parameter  | Type                    | Required | Description                  |
 | ---------- | ----------------------- | -------- | ---------------------------- |
-| method     | string                  | Yes      | Message method               |
-| params     | unknown                 | No       | Request data                 |
+| method     | K                       | Yes      | Message method               |
+| params     | InvokeMap[K]['params']  | No       | Request data                 |
 | to         | string                  | No       | Target instance ID           |
 | metadata   | Record<string, unknown> | No       | Metadata                     |
 | timeout    | number                  | No       | Timeout (overrides global)   |
@@ -230,15 +237,17 @@ const result = await nexus.invoke({
 Send a one-way notification (Fire-and-Forget). Does not wait for a response and does not generate an ID. Complies with JSON-RPC 2.0 Notification specification.
 
 ```typescript
-nexus.notify(methodOrOptions: string | Omit<InvokeOptions, 'timeout' | 'retryCount' | 'retryDelay'>): void
+nexus.notify<K extends keyof NotificationMap>(
+  methodOrOptions: K | NotificationOptions<K, NotificationMap[K]>
+): void
 ```
 
 **Options:**
 
 | Parameter | Type                    | Required | Description         |
 | --------- | ----------------------- | -------- | ------------------- |
-| method    | string                  | Yes      | Notification method |
-| params    | unknown                 | No       | Notification data   |
+| method    | K                       | Yes      | Notification method |
+| params    | NotificationMap[K]      | No       | Notification data   |
 | to        | string                  | No       | Target instance ID  |
 | metadata  | Record<string, unknown> | No       | Metadata            |
 
@@ -261,7 +270,10 @@ nexus.notify({
 Register a request handler for a specific method. The return value (or resolved value of a returned Promise) is automatically sent back as the response.
 
 ```typescript
-nexus.handle<Params, Result>(method: string, handler: InvokeHandler<Params, Result>): () => void
+nexus.handle<K extends keyof InvokeMap>(
+  method: K,
+  handler: InvokeHandler<InvokeMap[K]['params'], InvokeMap[K]['result']>
+): () => void
 ```
 
 **Parameters:**
@@ -295,7 +307,10 @@ unsubscribe()
 Register a handler for a specific notification method (one-way messages).
 
 ```typescript
-nexus.onNotification<Params>(method: string, handler: NotificationHandler<Params>): () => void
+nexus.onNotification<K extends keyof NotificationMap>(
+  method: K,
+  handler: NotificationHandler<NotificationMap[K]>
+): () => void
 ```
 
 **Example:**
@@ -563,28 +578,33 @@ function onUserConfirm(id: string) {
 
 ### 1. Type Safety
 
-MessageNexus uses TypeScript generics to provide full type inference:
+MessageNexus uses TypeScript generics and Schema mapping to provide full type inference across method names, parameters, and results:
 
 ```typescript
-interface UserRequest {
-  userId: number
+// 1. Define your protocol schemas
+interface MyInvokeMap {
+  'getUser': { params: { id: number }; result: { name: string; age: number } };
+  'calculate': { params: { a: number; b: number }; result: number };
 }
 
-interface UserResponse {
-  id: number
-  name: string
+interface MyNotificationMap {
+  'onLog': { message: string; level: 'info' | 'warn' | 'error' };
 }
 
-const nexus = new MessageNexus<UserRequest, UserResponse>(driver)
+// 2. Initialize with your schemas
+const nexus = new MessageNexus<MyInvokeMap, MyNotificationMap>(driver)
 
-// Full type inference
-const response = await nexus.invoke({
-  method: 'GET_USER',
-  params: { userId: 123 }, // Type: UserRequest
+// 3. Enjoy full type inference and autocompletion
+const response = await nexus.invoke('getUser', { id: 123 })
+// response Type: { name: string; age: number }
+
+nexus.notify('onLog', { message: 'Ready', level: 'info' })
+
+// 4. Type-safe handlers
+nexus.handle('calculate', (params) => {
+  // params Type: { a: number; b: number }
+  return params.a + params.b // result Type must be number
 })
-
-// response Type: UserResponse
-console.log(response.name)
 ```
 
 ### 2. Memory Safety

@@ -28,9 +28,25 @@ export interface MessageNexusOptions {
   logLevel?: LogLevel
 }
 
-export interface InvokeOptions {
-  method: string
-  params?: unknown
+/**
+ * Interface representing a method schema with parameters and results.
+ */
+export interface MethodSchema {
+  params?: any
+  result?: any
+}
+
+/**
+ * Default registry for method schemas.
+ */
+export type DefaultRegistry = Record<string, MethodSchema>
+
+/**
+ * Options for invoking a method.
+ */
+export interface InvokeOptions<K extends string = string, P = any> {
+  method: K
+  params?: P
   to?: string
   metadata?: Record<string, unknown>
   timeout?: number
@@ -38,9 +54,12 @@ export interface InvokeOptions {
   retryDelay?: number
 }
 
-export interface NotificationOptions {
-  method: string
-  params?: unknown
+/**
+ * Options for sending a notification.
+ */
+export interface NotificationOptions<K extends string = string, P = any> {
+  method: K
+  params?: P
   to?: string
   metadata?: Record<string, unknown>
 }
@@ -52,12 +71,18 @@ export interface InvokeContext {
   metadata?: Record<string, unknown>
 }
 
-export type InvokeHandler<Params = any, Result = any> = (
-  params: Params,
+/**
+ * Handler for an invoked method.
+ */
+export type InvokeHandler<P = any, R = any> = (
+  params: P,
   context: InvokeContext,
-) => Result | Promise<Result>
+) => R | Promise<R>
 
-export type NotificationHandler<Params = any> = (params: Params, context: InvokeContext) => void
+/**
+ * Handler for a notification.
+ */
+export type NotificationHandler<P = any> = (params: P, context: InvokeContext) => void
 
 export type ErrorHandler = (error: Error, context?: Record<string, unknown>) => void
 
@@ -73,7 +98,10 @@ export interface Metrics {
 
 export type MetricsCallback = (metrics: Metrics) => void
 
-export default class MessageNexus<GlobalRequestPayload = unknown, GlobalResponsePayload = unknown> {
+export default class MessageNexus<
+  InvokeMap extends Record<string, MethodSchema> = DefaultRegistry,
+  NotificationMap extends Record<string, any> = Record<string, any>,
+> {
   driver: BaseDriver
   pendingTasks: Map<
     string,
@@ -147,7 +175,9 @@ export default class MessageNexus<GlobalRequestPayload = unknown, GlobalResponse
     this.driver.onMessage = (data) => this._handleIncoming(data)
   }
 
-  async invoke<T = GlobalResponsePayload>(methodOrOptions: string | InvokeOptions): Promise<T> {
+  async invoke<K extends keyof InvokeMap>(
+    methodOrOptions: K | InvokeOptions<K & string, InvokeMap[K]['params']>,
+  ): Promise<InvokeMap[K]['result']> {
     const id = crypto.randomUUID()
 
     let method: string
@@ -159,13 +189,13 @@ export default class MessageNexus<GlobalRequestPayload = unknown, GlobalResponse
     let retryDelay = 1000
 
     if (typeof methodOrOptions === 'string') {
-      method = methodOrOptions
+      method = methodOrOptions as string
       params = undefined
       to = undefined
       metadata = {}
       timeout = this.timeout
     } else {
-      const opts = methodOrOptions
+      const opts = methodOrOptions as InvokeOptions
       method = opts.method
       params = opts.params
       to = opts.to
@@ -175,8 +205,8 @@ export default class MessageNexus<GlobalRequestPayload = unknown, GlobalResponse
       retryDelay = opts.retryDelay ?? 1000
     }
 
-    const attempt = async (attemptNumber: number): Promise<T> => {
-      return new Promise<T>((resolve, reject) => {
+    const attempt = async (attemptNumber: number): Promise<InvokeMap[K]['result']> => {
+      return new Promise<InvokeMap[K]['result']>((resolve, reject) => {
         const timer = setTimeout(() => {
           this.pendingTasks.delete(id)
           this.metrics.messagesFailed++
@@ -203,7 +233,7 @@ export default class MessageNexus<GlobalRequestPayload = unknown, GlobalResponse
         this._sendMessage(message)
       }).catch((error) => {
         if (attemptNumber < retryCount) {
-          return new Promise<T>((resolve) =>
+          return new Promise<InvokeMap[K]['result']>((resolve) =>
             setTimeout(() => resolve(attempt(attemptNumber + 1)), retryDelay * (attemptNumber + 1)),
           )
         }
@@ -274,19 +304,21 @@ export default class MessageNexus<GlobalRequestPayload = unknown, GlobalResponse
     }
   }
 
-  notify(methodOrOptions: string | NotificationOptions) {
+  notify<K extends keyof NotificationMap>(
+    methodOrOptions: K | NotificationOptions<K & string, NotificationMap[K]>,
+  ) {
     let method: string
     let params: unknown
     let to: string | undefined
     let metadata: Record<string, unknown>
 
     if (typeof methodOrOptions === 'string') {
-      method = methodOrOptions
+      method = methodOrOptions as string
       params = undefined
       to = undefined
       metadata = {}
     } else {
-      const opts = methodOrOptions
+      const opts = methodOrOptions as NotificationOptions
       method = opts.method
       params = opts.params
       to = opts.to
@@ -455,32 +487,41 @@ export default class MessageNexus<GlobalRequestPayload = unknown, GlobalResponse
     this.metricsCallbacks.forEach((callback) => callback(metrics))
   }
 
-  handle<Params = any, Result = any>(method: string, handler: InvokeHandler<Params, Result>) {
-    if (this.invokeHandlers.has(method)) {
-      this.logger.warn(`Overriding existing handler for method: ${method}`)
+  handle<K extends keyof InvokeMap>(
+    method: K,
+    handler: InvokeHandler<InvokeMap[K]['params'], InvokeMap[K]['result']>,
+  ) {
+    if (this.invokeHandlers.has(method as string)) {
+      this.logger.warn(`Overriding existing handler for method: ${method as string}`)
     }
-    this.invokeHandlers.set(method, handler)
-    return () => this.invokeHandlers.delete(method)
+    this.invokeHandlers.set(method as string, handler as InvokeHandler)
+    return () => this.invokeHandlers.delete(method as string)
   }
 
-  removeHandler(method: string) {
-    this.invokeHandlers.delete(method)
+  removeHandler(method: keyof InvokeMap) {
+    this.invokeHandlers.delete(method as string)
   }
 
-  onNotification<Params = any>(method: string, handler: NotificationHandler<Params>) {
-    if (!this.notificationHandlers.has(method)) {
-      this.notificationHandlers.set(method, new Set())
+  onNotification<K extends keyof NotificationMap>(
+    method: K,
+    handler: NotificationHandler<NotificationMap[K]>,
+  ) {
+    if (!this.notificationHandlers.has(method as string)) {
+      this.notificationHandlers.set(method as string, new Set())
     }
-    this.notificationHandlers.get(method)!.add(handler)
+    this.notificationHandlers.get(method as string)!.add(handler as NotificationHandler)
     return () => this.offNotification(method, handler)
   }
 
-  offNotification(method: string, handler: NotificationHandler<any>) {
-    const handlers = this.notificationHandlers.get(method)
+  offNotification<K extends keyof NotificationMap>(
+    method: K,
+    handler: NotificationHandler<NotificationMap[K]>,
+  ) {
+    const handlers = this.notificationHandlers.get(method as string)
     if (handlers) {
-      handlers.delete(handler)
+      handlers.delete(handler as NotificationHandler)
       if (handlers.size === 0) {
-        this.notificationHandlers.delete(method)
+        this.notificationHandlers.delete(method as string)
       }
     }
   }
