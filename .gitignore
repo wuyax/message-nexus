@@ -38,4 +38,4 @@ __screenshots__/
 # Vite
 *.timestamp-*-*.mjs
 .opencode/
-AGENTS.md
+AGENTS.md.worktrees/
