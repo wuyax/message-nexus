@@ -5,8 +5,18 @@ import { MittDriver } from 'message-nexus'
 import MessageNexus from 'message-nexus'
 import { emitter } from '../assets/utils'
 
+interface MyInvokeMap {
+  'scence.create': {
+    params: { name: string }
+    result: { result: string }
+  }
+}
+
 const driver = new MittDriver(emitter)
-const nexus = new MessageNexus(driver, { instanceId: 'myBridgeId', loggerEnabled: true })
+const nexus = new MessageNexus<MyInvokeMap>(driver, {
+  instanceId: 'myBridgeId',
+  loggerEnabled: true,
+})
 let messageId = ref<string[]>([])
 
 // Store resolvers to manually control when the Promise resolves

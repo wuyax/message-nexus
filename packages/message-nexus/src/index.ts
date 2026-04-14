@@ -42,6 +42,16 @@ export interface MethodSchema {
 export type DefaultRegistry = Record<string, MethodSchema>
 
 /**
+ * Helper to extract params from a schema or return any if not present.
+ */
+type GetParams<T> = T extends { params: infer P } ? P : any
+
+/**
+ * Helper to extract result from a schema or return any if not present.
+ */
+type GetResult<T> = T extends { result: infer R } ? R : any
+
+/**
  * Options for invoking a method.
  */
 export interface InvokeOptions<K extends string = string, P = any> {
@@ -99,8 +109,8 @@ export interface Metrics {
 export type MetricsCallback = (metrics: Metrics) => void
 
 export default class MessageNexus<
-  InvokeMap extends Record<string, MethodSchema> = DefaultRegistry,
-  NotificationMap extends Record<string, any> = Record<string, any>,
+  InvokeMap extends object = DefaultRegistry,
+  NotificationMap extends object = Record<string, any>,
 > {
   driver: BaseDriver
   pendingTasks: Map<
@@ -176,8 +186,8 @@ export default class MessageNexus<
   }
 
   async invoke<K extends keyof InvokeMap>(
-    methodOrOptions: K | InvokeOptions<K & string, InvokeMap[K]['params']>,
-  ): Promise<InvokeMap[K]['result']> {
+    methodOrOptions: K | InvokeOptions<K & string, GetParams<InvokeMap[K]>>,
+  ): Promise<GetResult<InvokeMap[K]>> {
     const id = crypto.randomUUID()
 
     let method: string
@@ -205,8 +215,8 @@ export default class MessageNexus<
       retryDelay = opts.retryDelay ?? 1000
     }
 
-    const attempt = async (attemptNumber: number): Promise<InvokeMap[K]['result']> => {
-      return new Promise<InvokeMap[K]['result']>((resolve, reject) => {
+    const attempt = async (attemptNumber: number): Promise<GetResult<InvokeMap[K]>> => {
+      return new Promise<GetResult<InvokeMap[K]>>((resolve, reject) => {
         const timer = setTimeout(() => {
           this.pendingTasks.delete(id)
           this.metrics.messagesFailed++
@@ -233,7 +243,7 @@ export default class MessageNexus<
         this._sendMessage(message)
       }).catch((error) => {
         if (attemptNumber < retryCount) {
-          return new Promise<InvokeMap[K]['result']>((resolve) =>
+          return new Promise<GetResult<InvokeMap[K]>>((resolve) =>
             setTimeout(() => resolve(attempt(attemptNumber + 1)), retryDelay * (attemptNumber + 1)),
           )
         }
@@ -489,7 +499,7 @@ export default class MessageNexus<
 
   handle<K extends keyof InvokeMap>(
     method: K,
-    handler: InvokeHandler<InvokeMap[K]['params'], InvokeMap[K]['result']>,
+    handler: InvokeHandler<GetParams<InvokeMap[K]>, GetResult<InvokeMap[K]>>,
   ) {
     if (this.invokeHandlers.has(method as string)) {
       this.logger.warn(`Overriding existing handler for method: ${method as string}`)

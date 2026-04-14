@@ -4,8 +4,15 @@ import MessageNexus from 'message-nexus'
 import { MittDriver } from 'message-nexus'
 import { emitter } from '../assets/utils'
 
+interface MyInvokeMap {
+  'scence.create': {
+    params: { name: string }
+    result: { result: string }
+  }
+}
+
 const driver = new MittDriver(emitter)
-const nexus = new MessageNexus(driver)
+const nexus = new MessageNexus<MyInvokeMap>(driver)
 
 function send() {
   nexus
@@ -17,7 +24,7 @@ function send() {
       retryDelay: 1000,
     })
     .then((res) => {
-      console.log(res)
+      console.log(res.result)
     })
     .catch((err) => {
       console.log(err)
