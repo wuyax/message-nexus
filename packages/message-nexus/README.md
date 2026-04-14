@@ -22,7 +22,8 @@ pnpm add message-nexus
 - **Retry Mechanism**: Automatic retry on request failure, configurable retry counts and delays
 - **Message Validation**: Runtime message format validation to prevent illegal messages
 - **Monitoring Metrics**: Built-in message statistics and performance monitoring
-- **Structured Logging**: Supports custom log handlers for easy debugging and production monitoring
+- **Structured Logging**: Supports adjustable log levels (DEBUG, INFO, WARN, ERROR) and custom log handlers or simple loggers (like `console`) for easy debugging and production monitoring.
+
 - **Resource Management**: All drivers support the `destroy()` method to properly clean up resources.
 
 ## Quick Start
@@ -164,12 +165,26 @@ new MessageNexus<RequestPayload, ResponsePayload>(
 
 **Options:**
 
-| Parameter     | Type    | Default Value  | Description                           |
-| ------------- | ------- | -------------- | ------------------------------------- |
-| instanceId    | string  | auto-generated | Instance ID, used for message routing |
-| timeout       | number  | 10000          | Request timeout (milliseconds)        |
-| logger        | Logger  | new Logger()   | Logger instance                       |
-| loggerEnabled | boolean | false          | Whether to enable logging             |
+| Parameter     | Type                         | Default Value  | Description                                |
+| ------------- | ---------------------------- | -------------- | ------------------------------------------ |
+| instanceId    | string                       | auto-generated | Instance ID, used for message routing      |
+| timeout       | number                       | 10000          | Request timeout (milliseconds)             |
+| logger        | LoggerInterface \| SimpleLogger | new Logger()   | Logger instance or simple logger (e.g. `console`) |
+| loggerEnabled | boolean                      | false          | Whether to enable logging                  |
+| logLevel      | LogLevel                     | LogLevel.INFO  | Minimum log level to report                |
+
+**LogLevel:** `DEBUG`, `INFO`, `WARN`, `ERROR`
+
+**SimpleLogger Interface:**
+
+```typescript
+interface SimpleLogger {
+  debug(message: string, metadata?: Record<string, unknown>): void
+  info(message: string, metadata?: Record<string, unknown>): void
+  warn(message: string, metadata?: Record<string, unknown>): void
+  error(message: string, metadata?: Record<string, unknown>): void
+}
+```
 
 #### Methods
 
@@ -609,15 +624,6 @@ console.log(
 )
 console.log(`Avg latency: ${metrics.averageLatency}ms`)
 console.log(`Pending: ${metrics.pendingMessages}, Queued: ${metrics.queuedMessages}`)
-```
-
-## Testing
-
-Run unit tests:
-
-```bash
-cd packages/message-nexus
-pnpm test:run
 ```
 
 ## License

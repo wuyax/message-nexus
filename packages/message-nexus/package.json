@@ -1,6 +1,6 @@
 {
   "name": "message-nexus",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "type": "module",
   "description": "A unified, type-safe, multi-protocol cross-context message communication library",
   "author": "wuyax",
