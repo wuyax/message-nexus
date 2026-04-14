@@ -326,21 +326,55 @@ unsubscribe()
 
 ##### onError()
 
-Register error handler.
+Register a global error handler for background errors (e.g., driver failures, invalid incoming messages). For request-specific errors, use `try/catch` with `invoke()`.
 
 ```typescript
-nexus.onError(handler: ErrorHandler): () => void
+nexus.onError(handler: (error: Error | NexusError, context?: Record<string, unknown>) => void): () => void
 ```
 
 **Example:**
 
 ```typescript
 nexus.onError((error, context) => {
-  console.error('Bridge error:', error.message, context)
+  if (error instanceof NexusError) {
+    console.error(`Bridge error [${error.code}]: ${error.message}`, error.data)
+  } else {
+    console.error('System error:', error.message)
+  }
   // Send to error tracking service
   Sentry.captureException(error, { extra: context })
 })
 ```
+
+#### Errors
+
+MessageNexus provides a structured error system based on the JSON-RPC 2.0 specification.
+
+##### NexusError
+
+A custom error class that includes a numeric code and optional data.
+
+```typescript
+class NexusError<D = any> extends Error {
+  code: number    // JSON-RPC or Nexus-specific error code
+  data?: D        // Optional additional error information
+}
+```
+
+##### NexusErrorCode
+
+Common error codes exported by the library:
+
+| Code | Name | Description |
+| --- | --- | --- |
+| -32700 | `ParseError` | Invalid JSON received by the server |
+| -32600 | `InvalidRequest` | The JSON sent is not a valid Request object |
+| -32601 | `MethodNotFound` | The method does not exist / is not registered |
+| -32602 | `InvalidParams` | Invalid method parameter(s) |
+| -32603 | `InternalError` | Internal JSON-RPC error (e.g., handler threw an exception) |
+| -32001 | `Timeout` | Request timed out |
+| -32002 | `SendFailed` | Failed to send message via driver |
+| -32003 | `InvalidResponse` | Received a response that doesn't match the request |
 
 ##### getMetrics()
 
@@ -617,12 +651,13 @@ nexus.handle('calculate', (params) => {
 - **Driver Lifecycle**: Each driver implements the `destroy()` method to correctly release resources
 - **Emitter Isolation**: Recommended to use `createEmitter()` to create independent instances, avoiding memory leaks caused by shared singletons
 
-### 3. Error Recovery
+### 3. Error Recovery & Handling
 
 - **Auto Reconnect**: WebSocket automatic reconnection mechanism with exponential backoff strategy
 - **Request Retry**: Automatic retry on request failure, configurable retry counts and delays
 - **Message Queue**: Offline message caching, automatically sent after connection recovery
-- **Error Callback**: Unified error handling mechanism
+- **Structured Error Handling**: Dedicated `NexusError` class and standard codes (JSON-RPC 2.0 compatible) for precise diagnostic and fault recovery
+- **Unified Error Callback**: Global `onError` listener for non-request background errors
 
 ### 4. Security Hardening
 
