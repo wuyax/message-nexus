@@ -94,7 +94,41 @@ export type InvokeHandler<P = any, R = any> = (
  */
 export type NotificationHandler<P = any> = (params: P, context: InvokeContext) => void
 
-export type ErrorHandler = (error: Error, context?: Record<string, unknown>) => void
+/**
+ * Standard JSON-RPC 2.0 and Nexus-specific error codes.
+ */
+enum NexusErrorCode {
+  // JSON-RPC 2.0 standard codes
+  ParseError = -32700,
+  InvalidRequest = -32600,
+  MethodNotFound = -32601,
+  InvalidParams = -32602,
+  InternalError = -32603,
+
+  // Nexus-specific codes
+  Timeout = -32001,
+  SendFailed = -32002,
+  InvalidResponse = -32003,
+}
+
+/**
+ * Custom error class for MessageNexus.
+ */
+class NexusError<D = any> extends Error {
+  public readonly code: number
+  public readonly data?: D
+
+  constructor(message: string, code: number = NexusErrorCode.InternalError, data?: D) {
+    super(message)
+    this.name = 'NexusError'
+    this.code = code
+    this.data = data
+    // Ensure the prototype is correctly set for inheritance in all environments
+    Object.setPrototypeOf(this, NexusError.prototype)
+  }
+}
+
+export type ErrorHandler = (error: Error | NexusError, context?: Record<string, unknown>) => void
 
 export interface Metrics {
   messagesSent: number
@@ -221,7 +255,7 @@ export default class MessageNexus<
           this.pendingTasks.delete(id)
           this.metrics.messagesFailed++
           this.metrics.pendingMessages--
-          reject(new Error(`Message timeout: ${method} (${id})`))
+          reject(new NexusError(`Message timeout: ${method} (${id})`, NexusErrorCode.Timeout))
         }, timeout)
 
         this.pendingTasks.set(id, { resolve, reject, timer, timestamp: Date.now() })
@@ -409,9 +443,11 @@ export default class MessageNexus<
         this.logger.debug('Response received', { messageId: id, latency })
 
         if (response.error) {
-          const err = new Error(response.error.message)
-          ;(err as any).code = response.error.code
-          ;(err as any).data = response.error.data
+          const err = new NexusError(
+            response.error.message,
+            response.error.code,
+            response.error.data,
+          )
           reject(err)
         } else {
           resolve(response.result)
@@ -451,8 +487,7 @@ export default class MessageNexus<
             this._replyError(id, envelope.from, error)
           }
         } else {
-          const err = new Error(`Method not found: ${request.method}`)
-          ;(err as any).code = -32601 // JSON-RPC Method not found
+          const err = new NexusError(`Method not found: ${request.method}`, NexusErrorCode.MethodNotFound)
           this._replyError(id, envelope.from, err)
         }
       } else {
@@ -553,14 +588,17 @@ export default class MessageNexus<
   }
 
   private _replyError(messageId: string, to: string, error: unknown) {
-    const err = error instanceof Error ? error : new Error(String(error))
+    const err = error instanceof NexusError ? error : 
+                error instanceof Error ? new NexusError(error.message, NexusErrorCode.InternalError) :
+                new NexusError(String(error), NexusErrorCode.InternalError)
+
     const rpcResponse: JsonRpcResponse = {
       jsonrpc: '2.0',
       id: messageId,
       error: {
-        code: (err as any).code || -32000,
+        code: err.code,
         message: err.message,
-        data: (err as any).data,
+        data: err.data,
       },
     }
 
@@ -602,5 +640,7 @@ export {
   WebSocketDriver,
   createEmitter,
   LogLevel,
+  NexusError,
+  NexusErrorCode,
 }
 export type { Message, LoggerInterface, SimpleLogger }

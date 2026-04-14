@@ -135,7 +135,7 @@ describe('MessageNexus', () => {
           jsonrpc: '2.0',
           id: 'test-id',
           error: {
-            code: -32000,
+            code: -32603,
             message: 'Handler failed',
             data: undefined,
           },

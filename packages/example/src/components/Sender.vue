@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onUnmounted } from 'vue'
 import MessageNexus from 'message-nexus'
-import { MittDriver } from 'message-nexus'
+import { MittDriver, NexusError } from 'message-nexus'
 import { emitter } from '../assets/utils'
 
 interface MyInvokeMap {
@@ -27,7 +27,11 @@ function send() {
       console.log(res.result)
     })
     .catch((err) => {
-      console.log(err)
+      if (err instanceof NexusError) {
+        console.log(`Error Code: ${err.code}, Message: ${err.message}`)
+      } else {
+        console.log('Unknown error:', err)
+      }
     })
 }
 
