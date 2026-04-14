@@ -1,5 +1,11 @@
 # message-nexus
 
+## 1.1.3
+
+### Patch Changes
+
+- enhancements logs and error handle
+
 ## 1.1.2
 
 ### Patch Changes
