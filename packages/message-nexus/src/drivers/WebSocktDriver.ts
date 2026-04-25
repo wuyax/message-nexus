@@ -98,7 +98,12 @@ export default class WebSocketDriver extends BaseDriver {
 
   private scheduleReconnect() {
     this.retryCount++
-    const delay = this.retryInterval * this.retryCount
+    
+    // Exponential backoff: base * 2^retryCount
+    // Cap the maximum delay at 30 seconds (30000ms)
+    const MAX_DELAY = 30000
+    const calculatedDelay = this.retryInterval * Math.pow(2, this.retryCount)
+    const delay = Math.min(calculatedDelay, MAX_DELAY)
 
     this.logger.info('Reconnecting scheduled', {
       delay,
