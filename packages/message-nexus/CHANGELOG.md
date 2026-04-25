@@ -1,5 +1,11 @@
 # message-nexus
 
+## 1.1.4
+
+### Patch Changes
+
+- Improve system stability
+
 ## 1.1.3
 
 ### Patch Changes
