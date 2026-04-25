@@ -35,8 +35,13 @@ export type Message = NexusEnvelope
 
 export default class BaseDriver {
   onMessage: ((data: Message) => void) | null
+  onConnect: (() => void) | null
+  onDisconnect: (() => void) | null
+
   constructor() {
     this.onMessage = null
+    this.onConnect = null
+    this.onDisconnect = null
   }
   send(data: Message) {
     throw new Error('Not implemented')

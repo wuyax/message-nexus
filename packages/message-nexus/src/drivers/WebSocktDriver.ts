@@ -53,6 +53,7 @@ export default class WebSocketDriver extends BaseDriver {
       this.logger.info('WebSocket connected', { url: this.url })
       this.retryCount = 0
       this.onStatusChange?.('connected')
+      this.onConnect?.()
     })
 
     this.ws.addEventListener('message', (event) => {
@@ -93,6 +94,7 @@ export default class WebSocketDriver extends BaseDriver {
       } else {
         this.onStatusChange?.('disconnected')
       }
+      this.onDisconnect?.()
     })
   }
 
@@ -147,10 +149,13 @@ export default class WebSocketDriver extends BaseDriver {
       this.ws = null
     }
     this.onStatusChange?.('disconnected')
+    this.onDisconnect?.()
   }
 
   destroy() {
     this.close()
     this.onMessage = null
+    this.onConnect = null
+    this.onDisconnect = null
   }
 }
