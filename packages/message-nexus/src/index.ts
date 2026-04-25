@@ -217,6 +217,10 @@ export default class MessageNexus<
     this.cleanupInterval = null
 
     this.driver.onMessage = (data) => this._handleIncoming(data)
+    this.driver.onConnect = () => {
+      this.logger.info('Driver connected, flushing message queue')
+      this.flushQueue()
+    }
   }
 
   async invoke<K extends keyof InvokeMap>(
@@ -274,7 +278,8 @@ export default class MessageNexus<
           payload: rpcRequest,
         }
 
-        this._sendMessage(message)
+        const isFinalAttempt = attemptNumber >= retryCount
+        this._sendMessage(message, !isFinalAttempt)
       }).catch((error) => {
         if (attemptNumber < retryCount) {
           return new Promise<GetResult<InvokeMap[K]>>((resolve) =>
@@ -290,7 +295,7 @@ export default class MessageNexus<
     return attempt(0)
   }
 
-  private _sendMessage(message: Message) {
+  private _sendMessage(message: Message, skipQueue: boolean = false) {
     const payload = message.payload as JsonRpcRequest | JsonRpcResponse | JsonRpcNotification
     const isRequest = 'method' in payload
     const messageId = 'id' in payload ? String(payload.id) : undefined
@@ -309,18 +314,22 @@ export default class MessageNexus<
       this.logger.error('Failed to send message', { error: err.message, messageId })
       this.errorHandler?.(err, { message })
 
-      if (this.messageQueue.length < this.maxQueueSize) {
-        this.messageQueue.push(message)
-        this.logger.debug('Message queued', {
-          messageId,
-          queueSize: this.messageQueue.length + 1,
-        })
+      if (!skipQueue) {
+        if (this.messageQueue.length < this.maxQueueSize) {
+          this.messageQueue.push(message)
+          this.logger.debug('Message queued', {
+            messageId,
+            queueSize: this.messageQueue.length + 1,
+          })
+        } else {
+          this.logger.warn('Message queue full, dropping oldest message', {
+            queueSize: this.messageQueue.length,
+          })
+          this.messageQueue.shift()
+          this.messageQueue.push(message)
+        }
       } else {
-        this.logger.warn('Message queue full, dropping oldest message', {
-          queueSize: this.messageQueue.length,
-        })
-        this.messageQueue.shift()
-        this.messageQueue.push(message)
+        this.logger.debug('Message failed but skipQueue is true (likely retrying)', { messageId })
       }
     }
     this.metrics.queuedMessages = this.messageQueue.length
@@ -346,6 +355,8 @@ export default class MessageNexus<
         }
       }
     }
+    this.metrics.queuedMessages = this.messageQueue.length
+    this._notifyMetrics()
   }
 
   notify<K extends keyof NotificationMap>(

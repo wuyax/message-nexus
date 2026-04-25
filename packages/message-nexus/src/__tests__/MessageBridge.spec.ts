@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import mitt from 'mitt'
 import MessageNexus from '../index'
 import MittDriver from '../drivers/MittDriver'
+import BaseDriver from '../drivers/BaseDriver'
 
 describe('MessageNexus', () => {
   let bridge: MessageNexus
@@ -350,6 +351,69 @@ describe('MessageNexus', () => {
       bridge.flushQueue()
 
       expect(bridge['messageQueue'].length).toBe(0)
+    })
+  })
+
+  describe('Connection Recovery', () => {
+    it('should automatically flush queue when driver connects', () => {
+      const mockDriver = new BaseDriver()
+      const sendSpy = vi.spyOn(mockDriver, 'send').mockImplementation(() => {
+        throw new Error('Offline')
+      })
+      
+      const nexus = new MessageNexus(mockDriver)
+      
+      // Send a notification, which should fail and enter the queue
+      nexus.notify('TEST_NOTIFY', { data: 1 })
+      
+      // Verify it's in the queue
+      expect(nexus.getMetrics().queuedMessages).toBe(1)
+      
+      // Simulate connection recovery by mocking send to succeed
+      sendSpy.mockImplementation(() => {})
+      
+      // Trigger the onConnect hook
+      mockDriver.onConnect?.()
+      
+      // Verify queue is flushed
+      expect(nexus.getMetrics().queuedMessages).toBe(0)
+      expect(sendSpy).toHaveBeenCalledTimes(2) // Once failed, once recovered
+      
+      nexus.destroy()
+    })
+  })
+
+  describe('Invoke Retries and Queue', () => {
+    it('should not enqueue the message multiple times during invoke retries', async () => {
+      vi.useFakeTimers()
+      
+      const mockDriver = new BaseDriver()
+      const sendSpy = vi.spyOn(mockDriver, 'send').mockImplementation(() => {
+        throw new Error('Send failed')
+      })
+      
+      const nexus = new MessageNexus(mockDriver)
+      
+      // Invoke with 2 retries (total 3 attempts)
+      const invokePromise = nexus.invoke({
+        method: 'TEST_METHOD',
+        retryCount: 2,
+        retryDelay: 100,
+        timeout: 5000
+      }).catch(() => {}) // Catch expected failure
+      
+      // Advance timers to trigger all retries
+      await vi.runAllTimersAsync()
+      await invokePromise
+      
+      // It should have attempted to send 3 times
+      expect(sendSpy).toHaveBeenCalledTimes(3)
+      
+      // But it should only be in the queue ONCE
+      expect(nexus.getMetrics().queuedMessages).toBe(1)
+      
+      nexus.destroy()
+      vi.useRealTimers()
     })
   })
 })
