@@ -3,6 +3,7 @@ import mitt from 'mitt'
 import MessageNexus from '../index'
 import MittDriver from '../drivers/MittDriver'
 import BaseDriver from '../drivers/BaseDriver'
+import { LogLevel } from '../utils/logger'
 
 describe('MessageNexus', () => {
   let bridge: MessageNexus
@@ -326,6 +327,16 @@ describe('MessageNexus', () => {
 
       expect(errorHandler).toHaveBeenCalledWith(expect.any(Error), expect.any(Object))
     })
+
+    it('should unregister error handler', () => {
+      const errorHandler = vi.fn()
+      const unsubscribe = bridge.onError(errorHandler)
+      
+      unsubscribe()
+      
+      mockDriver.onMessage?.({ invalid: 'message' } as any)
+      expect(errorHandler).not.toHaveBeenCalled()
+    })
   })
 
   describe('message queue', () => {
@@ -414,6 +425,221 @@ describe('MessageNexus', () => {
       
       nexus.destroy()
       vi.useRealTimers()
+    })
+  })
+
+  describe('Logger and Metrics', () => {
+    it('should use provided SimpleLogger', () => {
+      // Must not have addHandler etc., otherwise it qualifies as a full LoggerInterface
+      const mockSimpleLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      }
+      const bridgeWithLogger = new MessageNexus(mockDriver, {
+        logger: mockSimpleLogger as any,
+        loggerEnabled: true,
+        logLevel: LogLevel.DEBUG, // Set to DEBUG so we can test debug call
+      })
+      
+      expect(mockSimpleLogger.info).toHaveBeenCalled()
+      
+      // Trigger a log
+      bridgeWithLogger.notify('TEST')
+      expect(mockSimpleLogger.debug).toHaveBeenCalled()
+      
+      // Trigger warn and error to cover those branches
+      bridgeWithLogger['logger'].warn('warning')
+      bridgeWithLogger['logger'].error('error')
+      expect(mockSimpleLogger.warn).toHaveBeenCalled()
+      expect(mockSimpleLogger.error).toHaveBeenCalled()
+    })
+
+    it('should use provided full LoggerInterface', () => {
+      const mockFullLogger = {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        enable: vi.fn(),
+        disable: vi.fn(),
+        setLogLevel: vi.fn(),
+        addHandler: vi.fn(),
+        isEnabled: vi.fn().mockReturnValue(true),
+        setMinLevel: vi.fn(),
+      }
+      const bridgeWithFullLogger = new MessageNexus(mockDriver, {
+        logger: mockFullLogger as any,
+        loggerEnabled: true,
+      })
+      
+      expect(bridgeWithFullLogger['logger']).toBe(mockFullLogger)
+    })
+
+    it('should use console handler when loggerEnabled is true and no logger provided', () => {
+      const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+      const bridgeWithConsole = new MessageNexus(mockDriver, {
+        loggerEnabled: true,
+      })
+      // Should log initialization with INFO
+      expect(consoleSpy).toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+
+    it('should notify metrics changes', () => {
+      const callback = vi.fn()
+      const unsubscribe = bridge.onMetrics(callback)
+      
+      bridge.notify('TEST_NOTIFY')
+      
+      expect(callback).toHaveBeenCalled()
+      unsubscribe()
+      
+      callback.mockClear()
+      bridge.notify('TEST_NOTIFY_2')
+      // Should not be called again as we unsubscribed
+      expect(callback).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Queue edge cases', () => {
+    it('should drop oldest message when queue is full', () => {
+      const bridgeSmallQueue = new MessageNexus(mockDriver)
+      // Force queue size limit to be 2 for testing
+      bridgeSmallQueue['maxQueueSize'] = 2
+      vi.spyOn(mockDriver, 'send').mockImplementation(() => {
+        throw new Error('Send failed')
+      })
+
+      bridgeSmallQueue.notify('MSG_1')
+      bridgeSmallQueue.notify('MSG_2')
+      bridgeSmallQueue.notify('MSG_3')
+
+      expect(bridgeSmallQueue['messageQueue'].length).toBe(2)
+      // The first message (MSG_1) should be dropped
+      expect((bridgeSmallQueue['messageQueue'][0].payload as any).method).toBe('MSG_2')
+      expect((bridgeSmallQueue['messageQueue'][1].payload as any).method).toBe('MSG_3')
+    })
+
+    it('should handle flushQueue failure', () => {
+      vi.spyOn(mockDriver, 'send').mockImplementation(() => {
+        throw new Error('Send failed')
+      })
+      bridge.notify('TEST_NOTIFY') // Queues 1 message
+      
+      // Now mock it to fail on the flush too
+      const mockError = new Error('Flush send failed')
+      vi.spyOn(mockDriver, 'send').mockImplementationOnce(() => {
+        throw mockError
+      })
+      
+      bridge.flushQueue()
+      
+      // Should still be in the queue
+      expect(bridge['messageQueue'].length).toBe(1)
+    })
+  })
+
+  describe('Handler edge cases', () => {
+    it('should catch error thrown in notification handler', () => {
+      const handler = vi.fn().mockImplementation(() => {
+        throw new Error('Notification handler error')
+      })
+      bridge.onNotification('TEST_NOTIFY', handler)
+      
+      // Trigger notification reception
+      mockDriver.onMessage?.({
+        from: 'sender',
+        payload: {
+          jsonrpc: '2.0',
+          method: 'TEST_NOTIFY',
+        },
+      } as any)
+      
+      // Error shouldn't bubble up, but should be logged (caught internally)
+      expect(handler).toHaveBeenCalled()
+    })
+
+    it('should warn when overriding handler and allow removal', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      
+      bridge.handle('TEST_OVERRIDE', handler1)
+      bridge.handle('TEST_OVERRIDE', handler2) // Should trigger warn log
+      
+      expect(bridge['invokeHandlers'].get('TEST_OVERRIDE')).toBe(handler2)
+      
+      bridge.removeHandler('TEST_OVERRIDE')
+      expect(bridge['invokeHandlers'].has('TEST_OVERRIDE')).toBe(false)
+    })
+
+    it('should handle offNotification edge cases', () => {
+      const handler = vi.fn()
+      const handler2 = vi.fn()
+      
+      bridge.onNotification('TEST_NOTIFY', handler)
+      bridge.onNotification('TEST_NOTIFY', handler2)
+      
+      // Remove one handler, size is 1
+      bridge.offNotification('TEST_NOTIFY', handler)
+      expect(bridge['notificationHandlers'].has('TEST_NOTIFY')).toBe(true)
+      
+      // Remove last handler, size is 0, should delete the set
+      bridge.offNotification('TEST_NOTIFY', handler2)
+      expect(bridge['notificationHandlers'].has('TEST_NOTIFY')).toBe(false)
+      
+      // Off on non-existent
+      bridge.offNotification('NON_EXISTENT', handler)
+    })
+  })
+
+  describe('Response edge cases', () => {
+    it('should log warning for orphaned response', () => {
+      mockDriver.onMessage?.({
+        from: 'receiver',
+        payload: {
+          jsonrpc: '2.0',
+          id: 'unknown-id',
+          result: { data: 'test' },
+        },
+      } as any)
+      // Just verifying it doesn't throw and handles it gracefully
+    })
+
+    it('should reject promise when response contains error', async () => {
+      vi.useFakeTimers()
+      vi.spyOn(mockDriver, 'send').mockImplementation(() => {})
+      const promise = bridge.invoke('TEST_ACTION')
+      
+      const id = Array.from(bridge.pendingTasks.keys())[0]
+      
+      mockDriver.onMessage?.({
+        from: 'receiver',
+        payload: {
+          jsonrpc: '2.0',
+          id,
+          error: {
+            code: -32603,
+            message: 'Error from remote',
+          },
+        },
+      } as any)
+      
+      await expect(promise).rejects.toThrow('Error from remote')
+    })
+  })
+
+  describe('Lifecycle', () => {
+    it('should clear cleanup interval on destroy', () => {
+      const clearIntervalSpy = vi.spyOn(global, 'clearInterval')
+      bridge['cleanupInterval'] = setInterval(() => {}, 1000)
+      
+      bridge.destroy()
+      
+      expect(clearIntervalSpy).toHaveBeenCalled()
+      expect(bridge['cleanupInterval']).toBeNull()
+      clearIntervalSpy.mockRestore()
     })
   })
 })

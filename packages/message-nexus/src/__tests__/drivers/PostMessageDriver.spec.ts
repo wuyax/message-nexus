@@ -89,4 +89,42 @@ describe('PostMessageDriver', () => {
 
     expect(handler).not.toHaveBeenCalled()
   })
+
+  it('should filter out messages with non-object or null data', () => {
+    const handler = vi.fn()
+    const mockWindow = {} as Window
+
+    const driver = new PostMessageDriver(mockWindow, 'https://example.com')
+    driver.onMessage = handler
+
+    const mockEvent1 = new MessageEvent('message', {
+      data: null,
+      origin: 'https://example.com',
+    })
+    window.dispatchEvent(mockEvent1)
+
+    const mockEvent2 = new MessageEvent('message', {
+      data: 'just a string',
+      origin: 'https://example.com',
+    })
+    window.dispatchEvent(mockEvent2)
+
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('should remove event listener on destroy', () => {
+    const mockWindow = {} as Window
+    const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener')
+
+    const driver = new PostMessageDriver(mockWindow, 'https://example.com')
+    driver.destroy()
+
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('message', expect.any(Function))
+    expect(driver['messageHandler']).toBeNull()
+    expect(driver.onMessage).toBeNull()
+
+    // Calling destroy again should be safe
+    driver.destroy()
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(1)
+  })
 })
