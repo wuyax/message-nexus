@@ -629,17 +629,4 @@ describe('MessageNexus', () => {
       await expect(promise).rejects.toThrow('Error from remote')
     })
   })
-
-  describe('Lifecycle', () => {
-    it('should clear cleanup interval on destroy', () => {
-      const clearIntervalSpy = vi.spyOn(global, 'clearInterval')
-      bridge['cleanupInterval'] = setInterval(() => {}, 1000)
-      
-      bridge.destroy()
-      
-      expect(clearIntervalSpy).toHaveBeenCalled()
-      expect(bridge['cleanupInterval']).toBeNull()
-      clearIntervalSpy.mockRestore()
-    })
-  })
 })

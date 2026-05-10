@@ -161,7 +161,6 @@ export default class MessageNexus<
   notificationHandlers: Map<string, Set<NotificationHandler>>
   timeout: number
   instanceId: string
-  private cleanupInterval: ReturnType<typeof setInterval> | null = null
   private messageQueue: Message[] = []
   private maxQueueSize: number = 100
   private errorHandler: ErrorHandler | null = null
@@ -214,7 +213,6 @@ export default class MessageNexus<
     this.pendingTasks = new Map()
     this.invokeHandlers = new Map()
     this.notificationHandlers = new Map()
-    this.cleanupInterval = null
 
     this.driver.onMessage = (data) => this._handleIncoming(data)
     this.driver.onConnect = () => {
@@ -631,11 +629,6 @@ export default class MessageNexus<
     })
 
     this.driver.destroy?.()
-
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval)
-      this.cleanupInterval = null
-    }
 
     this.invokeHandlers.clear()
     this.notificationHandlers.clear()
