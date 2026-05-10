@@ -704,3 +704,52 @@ describe('Queue Management', () => {
     expect(driver.send).toHaveBeenCalledTimes(3)
   })
 })
+
+describe('Interceptors', () => {
+  class MockDriver extends BaseDriver {
+    send = vi.fn()
+  }
+
+  it('should allow intercepting outgoing messages', async () => {
+    vi.useRealTimers()
+    const driver = new MockDriver()
+    const nexus = new MessageNexus(driver, { loggerEnabled: false })
+    
+    nexus.useRequestInterceptor((msg) => {
+      msg.metadata = { ...msg.metadata, injected: true }
+      return msg
+    })
+    
+    // we await notify if we made _sendMessage async or use a small delay
+    nexus.notify({ method: 'test' })
+    await new Promise(r => setTimeout(r, 10))
+    
+    expect(driver.send).toHaveBeenCalled()
+    const sentMsg = driver.send.mock.calls[0][0]
+    expect(sentMsg.metadata.injected).toBe(true)
+  })
+  
+  it('should allow intercepting incoming messages', async () => {
+    const driver = new MockDriver()
+    const nexus = new MessageNexus(driver, { loggerEnabled: false })
+    
+    let interceptedParams: any
+    nexus.useResponseInterceptor((msg) => {
+      if ('method' in msg.payload && msg.payload.method === 'test') {
+         msg.payload.params = { modified: true }
+      }
+      return msg
+    })
+    
+    nexus.onNotification('test', (params) => {
+      interceptedParams = params
+    })
+    
+    await nexus._handleIncoming({
+      from: 'remote',
+      payload: { jsonrpc: '2.0', method: 'test', params: { original: true } }
+    })
+    
+    expect(interceptedParams).toEqual({ modified: true })
+  })
+})

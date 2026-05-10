@@ -133,6 +133,9 @@ class NexusError<D = any> extends Error {
 
 export type ErrorHandler = (error: Error | NexusError, context?: Record<string, unknown>) => void
 
+export type RequestInterceptor = (message: Message) => Message | Promise<Message>
+export type ResponseInterceptor = (message: Message) => Message | Promise<Message>
+
 export interface Metrics {
   messagesSent: number
   messagesReceived: number
@@ -166,6 +169,8 @@ export default class MessageNexus<
   instanceId: string
   private messageQueue: Message[] = []
   private maxQueueSize: number = 100
+  private requestInterceptors: RequestInterceptor[] = []
+  private responseInterceptors: ResponseInterceptor[] = []
   private errorHandler: ErrorHandler | null = null
   private logger: LoggerInterface
   private metrics: Metrics = {
@@ -296,14 +301,24 @@ export default class MessageNexus<
     return attempt(0)
   }
 
-  private _sendMessage(message: Message, skipQueue: boolean = false) {
-    const payload = message.payload as JsonRpcRequest | JsonRpcResponse | JsonRpcNotification
+  private async _sendMessage(message: Message, skipQueue: boolean = false) {
+    let finalMessage = message
+    try {
+      for (const interceptor of this.requestInterceptors) {
+        finalMessage = await interceptor(finalMessage)
+      }
+    } catch (err) {
+      this.logger.error('Request interceptor failed', { error: String(err) })
+      return
+    }
+
+    const payload = finalMessage.payload as JsonRpcRequest | JsonRpcResponse | JsonRpcNotification
     const isRequest = 'method' in payload
     const messageId = 'id' in payload ? String(payload.id) : undefined
     const typeOrMethod = isRequest ? payload.method : 'RESPONSE'
 
     try {
-      this.driver.send(message)
+      this.driver.send(finalMessage)
       this.metrics.messagesSent++
       if (isRequest && messageId !== undefined) {
         this.metrics.pendingMessages++
@@ -313,13 +328,14 @@ export default class MessageNexus<
       const err = error instanceof Error ? error : new Error(String(error))
       this.metrics.messagesFailed++
       this.logger.error('Failed to send message', { error: err.message, messageId })
-      this.errorHandler?.(err, { message })
-      
-      const isDataError = typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'DataCloneError'
+      this.errorHandler?.(err, { message: finalMessage })
+
+      const isDataError =
+        typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'DataCloneError'
 
       if (!skipQueue && !isDataError) {
         if (this.messageQueue.length < this.maxQueueSize) {
-          this.messageQueue.push(message)
+          this.messageQueue.push(finalMessage)
           this.logger.debug('Message queued', {
             messageId,
             queueSize: this.messageQueue.length + 1,
@@ -329,14 +345,31 @@ export default class MessageNexus<
             queueSize: this.messageQueue.length,
           })
           this.messageQueue.shift()
-          this.messageQueue.push(message)
+          this.messageQueue.push(finalMessage)
         }
       } else {
-        this.logger.debug(isDataError ? 'Message dropped due to data error' : 'Message failed but skipQueue is true (likely retrying)', { messageId })
+        this.logger.debug(
+          isDataError ? 'Message dropped due to data error' : 'Message failed but skipQueue is true (likely retrying)',
+          { messageId },
+        )
       }
     }
     this.metrics.queuedMessages = this.messageQueue.length
     this._notifyMetrics()
+  }
+
+  useRequestInterceptor(interceptor: RequestInterceptor) {
+    this.requestInterceptors.push(interceptor)
+    return () => {
+      this.requestInterceptors = this.requestInterceptors.filter((i) => i !== interceptor)
+    }
+  }
+
+  useResponseInterceptor(interceptor: ResponseInterceptor) {
+    this.responseInterceptors.push(interceptor)
+    return () => {
+      this.responseInterceptors = this.responseInterceptors.filter((i) => i !== interceptor)
+    }
   }
 
   onError(handler: ErrorHandler) {
@@ -353,10 +386,13 @@ export default class MessageNexus<
         try {
           this.driver.send(message)
         } catch (error) {
-          const isDataError = typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'DataCloneError'
+          const isDataError =
+            typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'DataCloneError'
           if (isDataError) {
-             this.logger.error('Message payload cannot be cloned during flush, dropping', { error: (error as Error).message });
-             continue;
+            this.logger.error('Message payload cannot be cloned during flush, dropping', {
+              error: (error as Error).message,
+            })
+            continue
           }
           this.messageQueue.unshift(message)
           break
@@ -432,7 +468,17 @@ export default class MessageNexus<
       return
     }
 
-    const envelope = data as Message
+    let envelope = data as Message
+
+    try {
+      for (const interceptor of this.responseInterceptors) {
+        envelope = await interceptor(envelope)
+      }
+    } catch (err) {
+      this.logger.error('Response interceptor failed', { error: String(err) })
+      return
+    }
+
     const payload = envelope.payload as JsonRpcRequest | JsonRpcResponse | JsonRpcNotification
 
     if (envelope.to && envelope.to !== this.instanceId) {
