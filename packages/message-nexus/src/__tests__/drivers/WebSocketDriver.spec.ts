@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import WebSocketDriver from '../../drivers/WebSocktDriver'
+import WebSocketDriver from '../../drivers/WebSocketDriver'
 
 describe('WebSocketDriver', () => {
   beforeEach(() => {

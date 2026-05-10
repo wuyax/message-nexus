@@ -8,7 +8,7 @@ import BaseDriver, {
 import BroadcastDriver from './drivers/BroadcastDriver'
 import MittDriver from './drivers/MittDriver'
 import PostMessageDriver from './drivers/PostMessageDriver'
-import WebSocketDriver from './drivers/WebSocktDriver'
+import WebSocketDriver from './drivers/WebSocketDriver'
 import {
   Logger,
   LoggerInterface,
