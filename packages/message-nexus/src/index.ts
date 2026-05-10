@@ -314,8 +314,10 @@ export default class MessageNexus<
       this.metrics.messagesFailed++
       this.logger.error('Failed to send message', { error: err.message, messageId })
       this.errorHandler?.(err, { message })
+      
+      const isDataError = typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'DataCloneError'
 
-      if (!skipQueue) {
+      if (!skipQueue && !isDataError) {
         if (this.messageQueue.length < this.maxQueueSize) {
           this.messageQueue.push(message)
           this.logger.debug('Message queued', {
@@ -330,7 +332,7 @@ export default class MessageNexus<
           this.messageQueue.push(message)
         }
       } else {
-        this.logger.debug('Message failed but skipQueue is true (likely retrying)', { messageId })
+        this.logger.debug(isDataError ? 'Message dropped due to data error' : 'Message failed but skipQueue is true (likely retrying)', { messageId })
       }
     }
     this.metrics.queuedMessages = this.messageQueue.length

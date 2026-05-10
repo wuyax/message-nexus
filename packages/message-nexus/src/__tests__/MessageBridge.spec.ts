@@ -673,3 +673,34 @@ describe('Error Handling', () => {
     bridge2.destroy()
   })
 })
+
+describe('Queue Management', () => {
+  class MockDriver extends BaseDriver {
+    send = vi.fn()
+  }
+
+  it('should discard messages causing DataCloneError and continue processing queue', () => {
+    const driver = new MockDriver()
+    const nexus = new MessageNexus(driver, { loggerEnabled: false })
+    
+    const cloneError = new DOMException('Data cannot be cloned', 'DataCloneError')
+    const normalError = new Error('Network offline')
+    
+    // Setup driver to fail first with clone error, then network error, then succeed
+    driver.send.mockImplementationOnce(() => { throw cloneError })
+               .mockImplementationOnce(() => { throw normalError })
+               .mockImplementationOnce(() => {})
+               
+    nexus.notify({ method: 'test1' }) // Will throw clone error, should be discarded
+    nexus.notify({ method: 'test2' }) // Will throw normal error, should queue
+    
+    expect(nexus.getMetrics().queuedMessages).toBe(1)
+    
+    // Restore driver
+    driver.send.mockImplementation(() => {})
+    nexus.flushQueue() // Should process the queued message
+    
+    expect(nexus.getMetrics().queuedMessages).toBe(0)
+    expect(driver.send).toHaveBeenCalledTimes(3)
+  })
+})
