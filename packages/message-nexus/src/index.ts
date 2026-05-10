@@ -353,6 +353,11 @@ export default class MessageNexus<
         try {
           this.driver.send(message)
         } catch (error) {
+          const isDataError = typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'DataCloneError'
+          if (isDataError) {
+             this.logger.error('Message payload cannot be cloned during flush, dropping', { error: (error as Error).message });
+             continue;
+          }
           this.messageQueue.unshift(message)
           break
         }
