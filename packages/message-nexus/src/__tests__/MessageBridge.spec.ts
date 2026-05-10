@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import mitt from 'mitt'
-import MessageNexus from '../index'
+import MessageNexus, { NexusError, NexusErrorCode } from '../index'
 import MittDriver from '../drivers/MittDriver'
 import BaseDriver from '../drivers/BaseDriver'
 import { LogLevel } from '../utils/logger'
@@ -628,5 +628,15 @@ describe('MessageNexus', () => {
       
       await expect(promise).rejects.toThrow('Error from remote')
     })
+  })
+})
+
+describe('Error Handling', () => {
+  it('should preserve error name and stack in NexusError', () => {
+    const originalError = new Error('Test Original Error')
+    const nexusError = new NexusError(originalError.message, NexusErrorCode.InternalError, undefined, originalError.name, originalError.stack)
+    
+    expect(nexusError.name).toBe('Error')
+    expect(nexusError.stack).toBe(originalError.stack)
   })
 })

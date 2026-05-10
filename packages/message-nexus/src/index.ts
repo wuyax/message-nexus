@@ -118,11 +118,14 @@ class NexusError<D = any> extends Error {
   public readonly code: number
   public readonly data?: D
 
-  constructor(message: string, code: number = NexusErrorCode.InternalError, data?: D) {
+  constructor(message: string, code: number = NexusErrorCode.InternalError, data?: D, name?: string, stack?: string) {
     super(message)
-    this.name = 'NexusError'
+    this.name = name || 'NexusError'
     this.code = code
     this.data = data
+    if (stack) {
+      this.stack = stack
+    }
     // Ensure the prototype is correctly set for inheritance in all environments
     Object.setPrototypeOf(this, NexusError.prototype)
   }
@@ -598,11 +601,10 @@ export default class MessageNexus<
 
   private _replyError(messageId: string, to: string, error: unknown) {
     const err = error instanceof NexusError ? error : 
-                error instanceof Error ? new NexusError(error.message, NexusErrorCode.InternalError) :
+                error instanceof Error ? new NexusError(error.message, NexusErrorCode.InternalError, undefined, error.name, error.stack) :
                 new NexusError(String(error), NexusErrorCode.InternalError)
 
-    const rpcResponse: JsonRpcResponse = {
-      jsonrpc: '2.0',
+    const rpcResponse: JsonRpcResponse = {      jsonrpc: '2.0',
       id: messageId,
       error: {
         code: err.code,
