@@ -1,5 +1,11 @@
 # message-nexus
 
+## 1.2.0
+
+### Minor Changes
+
+- Extensibility: Introduced a powerful interceptor mechanism. Users can now register RequestInterceptor and ResponseInterceptor hooks to modify
+
 ## 1.1.4
 
 ### Patch Changes
