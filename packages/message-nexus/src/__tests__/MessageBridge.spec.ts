@@ -198,10 +198,10 @@ describe('MessageNexus', () => {
   })
 
   describe('notify', () => {
-    it('should send notification message with correct format', () => {
+    it('should send notification message with correct format', async () => {
       const sendSpy = vi.spyOn(mockDriver, 'send')
 
-      bridge.notify({ method: 'TEST_NOTIFY', params: { data: 'test' } })
+      await bridge.notify({ method: 'TEST_NOTIFY', params: { data: 'test' } })
 
       expect(sendSpy).toHaveBeenCalledWith({
         from: bridge.instanceId,
@@ -215,10 +215,10 @@ describe('MessageNexus', () => {
       })
     })
 
-    it('should handle string notification', () => {
+    it('should handle string notification', async () => {
       const sendSpy = vi.spyOn(mockDriver, 'send')
 
-      bridge.notify('TEST_NOTIFY')
+      await bridge.notify('TEST_NOTIFY')
 
       expect(sendSpy).toHaveBeenCalledWith({
         from: bridge.instanceId,
@@ -370,7 +370,7 @@ describe('MessageNexus', () => {
   })
 
   describe('Connection Recovery', () => {
-    it('should automatically flush queue when driver connects', () => {
+    it('should automatically flush queue when driver connects', async () => {
       const mockDriver = new BaseDriver()
       const sendSpy = vi.spyOn(mockDriver, 'send').mockImplementation(() => {
         throw new Error('Offline')
@@ -379,7 +379,7 @@ describe('MessageNexus', () => {
       const nexus = new MessageNexus(mockDriver)
       
       // Send a notification, which should fail and enter the queue
-      nexus.notify('TEST_NOTIFY', { data: 1 })
+      await nexus.notify('TEST_NOTIFY', { data: 1 })
       
       // Verify it's in the queue
       expect(nexus.getMetrics().queuedMessages).toBe(1)
@@ -433,7 +433,7 @@ describe('MessageNexus', () => {
   })
 
   describe('Logger and Metrics', () => {
-    it('should use provided SimpleLogger', () => {
+    it('should use provided SimpleLogger', async () => {
       // Must not have addHandler etc., otherwise it qualifies as a full LoggerInterface
       const mockSimpleLogger = {
         debug: vi.fn(),
@@ -450,7 +450,7 @@ describe('MessageNexus', () => {
       expect(mockSimpleLogger.info).toHaveBeenCalled()
       
       // Trigger a log
-      bridgeWithLogger.notify('TEST')
+      await bridgeWithLogger.notify('TEST')
       expect(mockSimpleLogger.debug).toHaveBeenCalled()
       
       // Trigger warn and error to cover those branches
@@ -491,24 +491,24 @@ describe('MessageNexus', () => {
       consoleSpy.mockRestore()
     })
 
-    it('should notify metrics changes', () => {
+    it('should notify metrics changes', async () => {
       const callback = vi.fn()
       const unsubscribe = bridge.onMetrics(callback)
       
-      bridge.notify('TEST_NOTIFY')
+      await bridge.notify('TEST_NOTIFY')
       
       expect(callback).toHaveBeenCalled()
       unsubscribe()
       
       callback.mockClear()
-      bridge.notify('TEST_NOTIFY_2')
+      await bridge.notify('TEST_NOTIFY_2')
       // Should not be called again as we unsubscribed
       expect(callback).not.toHaveBeenCalled()
     })
   })
 
   describe('Queue edge cases', () => {
-    it('should drop oldest message when queue is full', () => {
+    it('should drop oldest message when queue is full', async () => {
       const bridgeSmallQueue = new MessageNexus(mockDriver)
       // Force queue size limit to be 2 for testing
       bridgeSmallQueue['maxQueueSize'] = 2
@@ -516,9 +516,9 @@ describe('MessageNexus', () => {
         throw new Error('Send failed')
       })
 
-      bridgeSmallQueue.notify('MSG_1')
-      bridgeSmallQueue.notify('MSG_2')
-      bridgeSmallQueue.notify('MSG_3')
+      await bridgeSmallQueue.notify('MSG_1')
+      await bridgeSmallQueue.notify('MSG_2')
+      await bridgeSmallQueue.notify('MSG_3')
 
       expect(bridgeSmallQueue['messageQueue'].length).toBe(2)
       // The first message (MSG_1) should be dropped
@@ -526,11 +526,11 @@ describe('MessageNexus', () => {
       expect((bridgeSmallQueue['messageQueue'][1].payload as any).method).toBe('MSG_3')
     })
 
-    it('should handle flushQueue failure', () => {
+    it('should handle flushQueue failure', async () => {
       vi.spyOn(mockDriver, 'send').mockImplementation(() => {
         throw new Error('Send failed')
       })
-      bridge.notify('TEST_NOTIFY') // Queues 1 message
+      await bridge.notify('TEST_NOTIFY') // Queues 1 message
       
       // Now mock it to fail on the flush too
       const mockError = new Error('Flush send failed')
@@ -679,7 +679,7 @@ describe('Queue Management', () => {
     send = vi.fn()
   }
 
-  it('should discard messages causing DataCloneError and continue processing queue', () => {
+  it('should discard messages causing DataCloneError and continue processing queue', async () => {
     const driver = new MockDriver()
     const nexus = new MessageNexus(driver, { loggerEnabled: false })
     
@@ -691,8 +691,8 @@ describe('Queue Management', () => {
                .mockImplementationOnce(() => { throw normalError })
                .mockImplementationOnce(() => {})
                
-    nexus.notify({ method: 'test1' }) // Will throw clone error, should be discarded
-    nexus.notify({ method: 'test2' }) // Will throw normal error, should queue
+    await nexus.notify({ method: 'test1' }) // Will throw clone error, should be discarded
+    await nexus.notify({ method: 'test2' }) // Will throw normal error, should queue
     
     expect(nexus.getMetrics().queuedMessages).toBe(1)
     
@@ -711,7 +711,6 @@ describe('Interceptors', () => {
   }
 
   it('should allow intercepting outgoing messages', async () => {
-    vi.useRealTimers()
     const driver = new MockDriver()
     const nexus = new MessageNexus(driver, { loggerEnabled: false })
     
@@ -720,9 +719,7 @@ describe('Interceptors', () => {
       return msg
     })
     
-    // we await notify if we made _sendMessage async or use a small delay
-    nexus.notify({ method: 'test' })
-    await new Promise(r => setTimeout(r, 10))
+    await nexus.notify({ method: 'test' })
     
     expect(driver.send).toHaveBeenCalled()
     const sentMsg = driver.send.mock.calls[0][0]
@@ -751,5 +748,46 @@ describe('Interceptors', () => {
     })
     
     expect(interceptedParams).toEqual({ modified: true })
+  })
+
+  it('should allow intercepting RPC replies', async () => {
+    const driver = new MockDriver()
+    const nexus = new MessageNexus(driver, { loggerEnabled: false })
+    
+    nexus.handle('sum', (params: any) => params.a + params.b)
+    
+    nexus.useRequestInterceptor((msg) => {
+      if ('result' in msg.payload) {
+        msg.payload.result = (msg.payload.result as number) * 10
+      }
+      return msg
+    })
+    
+    await nexus._handleIncoming({
+      from: 'caller',
+      payload: { jsonrpc: '2.0', method: 'sum', params: { a: 1, b: 2 }, id: '1' }
+    })
+    
+    // Check what was sent back
+    expect(driver.send).toHaveBeenCalled()
+    const reply = driver.send.mock.calls[0][0]
+    expect(reply.payload.result).toBe(30) // (1+2) * 10
+  })
+
+  it('should handle interceptor failures gracefully', async () => {
+    const driver = new MockDriver()
+    const nexus = new MessageNexus(driver, { loggerEnabled: false })
+    const errorHandler = vi.fn()
+    nexus.onError(errorHandler)
+    
+    nexus.useRequestInterceptor(() => {
+      throw new Error('Interceptor failed')
+    })
+    
+    await nexus.notify({ method: 'test' })
+    
+    expect(driver.send).not.toHaveBeenCalled()
+    expect(nexus.getMetrics().messagesFailed).toBe(1)
+    expect(errorHandler).toHaveBeenCalled()
   })
 })

@@ -285,7 +285,9 @@ export default class MessageNexus<
         }
 
         const isFinalAttempt = attemptNumber >= retryCount
-        this._sendMessage(message, !isFinalAttempt)
+        this._sendMessage(message, !isFinalAttempt).catch(() => {
+          // Error is already handled inside _sendMessage
+        })
       }).catch((error) => {
         if (attemptNumber < retryCount) {
           return new Promise<GetResult<InvokeMap[K]>>((resolve) =>
@@ -309,6 +311,8 @@ export default class MessageNexus<
       }
     } catch (err) {
       this.logger.error('Request interceptor failed', { error: String(err) })
+      this.metrics.messagesFailed++
+      this.errorHandler?.(err instanceof Error ? err : new Error(String(err)), { message: finalMessage })
       return
     }
 
@@ -403,9 +407,9 @@ export default class MessageNexus<
     this._notifyMetrics()
   }
 
-  notify<K extends keyof NotificationMap>(
+  async notify<K extends keyof NotificationMap>(
     methodOrOptions: K | NotificationOptions<K & string, NotificationMap[K]>,
-  ) {
+  ): Promise<void> {
     let method: string
     let params: unknown
     let to: string | undefined
@@ -437,7 +441,7 @@ export default class MessageNexus<
       payload: rpcNotification,
     }
 
-    this._sendMessage(message)
+    await this._sendMessage(message)
   }
 
   private _validateMessage(data: unknown): data is Message {
@@ -476,6 +480,8 @@ export default class MessageNexus<
       }
     } catch (err) {
       this.logger.error('Response interceptor failed', { error: String(err) })
+      this.metrics.messagesFailed++
+      this.errorHandler?.(err instanceof Error ? err : new Error(String(err)), { message: envelope })
       return
     }
 
@@ -549,13 +555,13 @@ export default class MessageNexus<
         if (handler) {
           try {
             const result = await handler(request.params, context)
-            this._reply(id, envelope.from, result)
+            await this._reply(id, envelope.from, result)
           } catch (error) {
-            this._replyError(id, envelope.from, error)
+            await this._replyError(id, envelope.from, error)
           }
         } else {
           const err = new NexusError(`Method not found: ${request.method}`, NexusErrorCode.MethodNotFound)
-          this._replyError(id, envelope.from, err)
+          await this._replyError(id, envelope.from, err)
         }
       } else {
         const notification = payload as JsonRpcNotification
@@ -638,7 +644,7 @@ export default class MessageNexus<
     }
   }
 
-  private _reply(messageId: string, to: string, payload: unknown) {
+  private async _reply(messageId: string, to: string, payload: unknown) {
     const rpcResponse: JsonRpcResponse = {
       jsonrpc: '2.0',
       id: messageId,
@@ -651,10 +657,10 @@ export default class MessageNexus<
       payload: rpcResponse,
     }
 
-    this.driver.send(message)
+    await this._sendMessage(message)
   }
 
-  private _replyError(messageId: string, to: string, error: unknown) {
+  private async _replyError(messageId: string, to: string, error: unknown) {
     const err = error instanceof NexusError ? error : 
                 error instanceof Error ? new NexusError(error.message, NexusErrorCode.InternalError, undefined, error.name, error.stack) :
                 new NexusError(String(error), NexusErrorCode.InternalError)
@@ -677,7 +683,7 @@ export default class MessageNexus<
       payload: rpcResponse,
     }
 
-    this.driver.send(message)
+    await this._sendMessage(message)
   }
 
   destroy() {
