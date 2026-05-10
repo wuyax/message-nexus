@@ -459,6 +459,8 @@ export default class MessageNexus<
             response.error.message,
             response.error.code,
             response.error.data,
+            response.error.name,
+            response.error.stack,
           )
           reject(err)
         } else {
@@ -604,12 +606,15 @@ export default class MessageNexus<
                 error instanceof Error ? new NexusError(error.message, NexusErrorCode.InternalError, undefined, error.name, error.stack) :
                 new NexusError(String(error), NexusErrorCode.InternalError)
 
-    const rpcResponse: JsonRpcResponse = {      jsonrpc: '2.0',
+    const rpcResponse: JsonRpcResponse = {
+      jsonrpc: '2.0',
       id: messageId,
       error: {
         code: err.code,
         message: err.message,
         data: err.data,
+        name: err.name,
+        stack: err.stack,
       },
     }
 

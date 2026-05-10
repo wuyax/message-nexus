@@ -20,6 +20,8 @@ export interface JsonRpcResponse {
     code: number
     message: string
     data?: unknown
+    name?: string
+    stack?: string
   }
   id: JsonRpcId
 }

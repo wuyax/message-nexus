@@ -140,6 +140,8 @@ describe('MessageNexus', () => {
             code: -32603,
             message: 'Handler failed',
             data: undefined,
+            name: expect.any(String),
+            stack: expect.any(String),
           },
         },
       })
@@ -187,6 +189,8 @@ describe('MessageNexus', () => {
             code: -32601,
             message: 'Method not found: UNKNOWN_COMMAND',
             data: undefined,
+            name: expect.any(String),
+            stack: expect.any(String),
           },
         },
       })
@@ -638,5 +642,34 @@ describe('Error Handling', () => {
     
     expect(nexusError.name).toBe('Error')
     expect(nexusError.stack).toBe(originalError.stack)
+  })
+
+  it('should serialize and deserialize error name and stack across the bridge', async () => {
+    const emitter = mitt() as any
+    const driver1 = new MittDriver(emitter)
+    const driver2 = new MittDriver(emitter)
+    
+    const bridge1 = new MessageNexus(driver1, { instanceId: 'bridge1' })
+    const bridge2 = new MessageNexus(driver2, { instanceId: 'bridge2' })
+    
+    const testError = new TypeError('Something went wrong')
+    
+    bridge2.handle('THROW_ERROR', async () => {
+      throw testError
+    })
+    
+    try {
+      await bridge1.invoke({ method: 'THROW_ERROR', to: 'bridge2' })
+      expect.fail('Should have thrown')
+    } catch (error: any) {
+      expect(error).toBeInstanceOf(NexusError)
+      expect(error.name).toBe('TypeError')
+      expect(error.message).toBe('Something went wrong')
+      expect(error.stack).toBe(testError.stack)
+      expect(error.code).toBe(NexusErrorCode.InternalError)
+    }
+    
+    bridge1.destroy()
+    bridge2.destroy()
   })
 })
