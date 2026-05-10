@@ -22,8 +22,9 @@ pnpm add message-nexus
 - **Retry Mechanism**: Automatic retry on request failure, configurable retry counts and delays
 - **Message Validation**: Runtime message format validation to prevent illegal messages
 - **Monitoring Metrics**: Built-in message statistics and performance monitoring
+- **Message Interceptors**: Hook into the outgoing request and incoming response pipelines to modify payloads, inject metadata, or implement global logging
+- **Cross-Context Errors**: Preserves error `name` and `stack` traces across communication bridges for seamless debugging
 - **Structured Logging**: Supports adjustable log levels (DEBUG, INFO, WARN, ERROR) and custom log handlers or simple loggers (like `console`) for easy debugging and production monitoring.
-
 - **Resource Management**: All drivers support the `destroy()` method to properly clean up resources.
 
 ## Quick Start
@@ -346,18 +347,50 @@ nexus.onError((error, context) => {
 })
 ```
 
+##### useRequestInterceptor()
+
+Register a hook to intercept and potentially modify outgoing messages before they are sent to the driver. Interceptors can be synchronous or asynchronous.
+
+```typescript
+nexus.useRequestInterceptor(
+  (message: Message) => Message | Promise<Message>
+): () => void
+```
+
+**Example:**
+
+```typescript
+const unsubscribe = nexus.useRequestInterceptor(async (message) => {
+  // Inject an authentication token into the metadata
+  message.metadata = { ...message.metadata, token: await getAuthToken() }
+  return message
+})
+```
+
+##### useResponseInterceptor()
+
+Register a hook to intercept and modify incoming messages before they are processed by handlers or resolve pending invokes.
+
+```typescript
+nexus.useResponseInterceptor(
+  (message: Message) => Message | Promise<Message>
+): () => void
+```
+
 #### Errors
 
 MessageNexus provides a structured error system based on the JSON-RPC 2.0 specification.
 
 ##### NexusError
 
-A custom error class that includes a numeric code and optional data.
+A custom error class that includes a numeric code and optional data. `MessageNexus` automatically preserves and serializes the `name` and `stack` properties of errors thrown in handlers, enabling seamless cross-context debugging.
 
 ```typescript
 class NexusError<D = any> extends Error {
   code: number    // JSON-RPC or Nexus-specific error code
   data?: D        // Optional additional error information
+  name: string    // Preserved error name from original context
+  stack?: string  // Preserved stack trace from original context
 }
 ```
 
