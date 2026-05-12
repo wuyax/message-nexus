@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import MessageNexus from '../index'
 import BaseDriver from '../drivers/BaseDriver'
+import { NexusError, NexusErrorCode } from '../errors'
 
 describe('DataCloneError Handling in flushQueue', () => {
   class MockDriver extends BaseDriver {
@@ -13,7 +14,7 @@ describe('DataCloneError Handling in flushQueue', () => {
     
     // Create a DOMException that looks like a DataCloneError
     // In node/jsdom environment, DOMException is usually available
-    const cloneError = new DOMException('Data cannot be cloned', 'DataCloneError')
+    const cloneError = new NexusError('Message payload cannot be cloned', NexusErrorCode.InvalidParams)
     const normalError = new Error('Network offline')
     
     // First, let's manually populate the queue with two messages

@@ -496,7 +496,7 @@ describe('MessageNexus', () => {
       const unsubscribe = bridge.onMetrics(callback)
       
       await bridge.notify('TEST_NOTIFY')
-      
+      vi.advanceTimersByTime(150)
       expect(callback).toHaveBeenCalled()
       unsubscribe()
       
@@ -683,7 +683,7 @@ describe('Queue Management', () => {
     const driver = new MockDriver()
     const nexus = new MessageNexus(driver, { loggerEnabled: false })
     
-    const cloneError = new DOMException('Data cannot be cloned', 'DataCloneError')
+    const cloneError = new NexusError('Message payload cannot be cloned', NexusErrorCode.InvalidParams)
     const normalError = new Error('Network offline')
     
     // Setup driver to fail first with clone error, then network error, then succeed

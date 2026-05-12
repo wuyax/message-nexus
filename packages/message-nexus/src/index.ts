@@ -19,6 +19,7 @@ import {
   isSimpleLogger,
 } from './utils/logger'
 import { createEmitter } from './utils/emitter'
+import { NexusError, NexusErrorCode } from './errors'
 
 export interface MessageNexusOptions {
   instanceId?: string
@@ -42,19 +43,19 @@ export interface MethodSchema {
 export type DefaultRegistry = Record<string, MethodSchema>
 
 /**
- * Helper to extract params from a schema or return any if not present.
+ * Helper to extract params from a schema or return unknown if not present.
  */
-type GetParams<T> = T extends { params: infer P } ? P : any
+type GetParams<T> = T extends { params: infer P } ? P : unknown
 
 /**
- * Helper to extract result from a schema or return any if not present.
+ * Helper to extract result from a schema or return unknown if not present.
  */
-type GetResult<T> = T extends { result: infer R } ? R : any
+type GetResult<T> = T extends { result: infer R } ? R : unknown
 
 /**
  * Options for invoking a method.
  */
-export interface InvokeOptions<K extends string = string, P = any> {
+export interface InvokeOptions<K extends string = string, P = unknown> {
   method: K
   params?: P
   to?: string
@@ -67,7 +68,7 @@ export interface InvokeOptions<K extends string = string, P = any> {
 /**
  * Options for sending a notification.
  */
-export interface NotificationOptions<K extends string = string, P = any> {
+export interface NotificationOptions<K extends string = string, P = unknown> {
   method: K
   params?: P
   to?: string
@@ -84,7 +85,7 @@ export interface InvokeContext {
 /**
  * Handler for an invoked method.
  */
-export type InvokeHandler<P = any, R = any> = (
+export type InvokeHandler<P = unknown, R = unknown> = (
   params: P,
   context: InvokeContext,
 ) => R | Promise<R>
@@ -94,42 +95,6 @@ export type InvokeHandler<P = any, R = any> = (
  */
 export type NotificationHandler<P = any> = (params: P, context: InvokeContext) => void
 
-/**
- * Standard JSON-RPC 2.0 and Nexus-specific error codes.
- */
-enum NexusErrorCode {
-  // JSON-RPC 2.0 standard codes
-  ParseError = -32700,
-  InvalidRequest = -32600,
-  MethodNotFound = -32601,
-  InvalidParams = -32602,
-  InternalError = -32603,
-
-  // Nexus-specific codes
-  Timeout = -32001,
-  SendFailed = -32002,
-  InvalidResponse = -32003,
-}
-
-/**
- * Custom error class for MessageNexus.
- */
-class NexusError<D = any> extends Error {
-  public readonly code: number
-  public readonly data?: D
-
-  constructor(message: string, code: number = NexusErrorCode.InternalError, data?: D, name?: string, stack?: string) {
-    super(message)
-    this.name = name || 'NexusError'
-    this.code = code
-    this.data = data
-    if (stack) {
-      this.stack = stack
-    }
-    // Ensure the prototype is correctly set for inheritance in all environments
-    Object.setPrototypeOf(this, NexusError.prototype)
-  }
-}
 
 export type ErrorHandler = (error: Error | NexusError, context?: Record<string, unknown>) => void
 
@@ -156,7 +121,7 @@ export default class MessageNexus<
   pendingTasks: Map<
     string,
     {
-      resolve: (value: any) => void
+      resolve: (value: unknown) => void
       reject: (reason?: unknown) => void
       timer: ReturnType<typeof setTimeout>
       to?: string
@@ -183,6 +148,7 @@ export default class MessageNexus<
     averageLatency: 0,
   }
   private metricsCallbacks: Set<MetricsCallback> = new Set()
+  private metricsThrottleTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(driver: BaseDriver, options?: MessageNexusOptions) {
     this.driver = driver
@@ -268,7 +234,7 @@ export default class MessageNexus<
           reject(new NexusError(`Message timeout: ${method} (${id})`, NexusErrorCode.Timeout))
         }, timeout)
 
-        this.pendingTasks.set(id, { resolve, reject, timer, timestamp: Date.now() })
+        this.pendingTasks.set(id, { resolve: resolve as unknown as (value: unknown) => void, reject, timer, timestamp: Date.now() })
 
         const rpcRequest: JsonRpcRequest = {
           jsonrpc: '2.0',
@@ -334,8 +300,7 @@ export default class MessageNexus<
       this.logger.error('Failed to send message', { error: err.message, messageId })
       this.errorHandler?.(err, { message: finalMessage })
 
-      const isDataError =
-        typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'DataCloneError'
+      const isDataError = err.name === 'NexusError' && (err as NexusError).code === NexusErrorCode.InvalidParams && err.message === 'Message payload cannot be cloned'
 
       if (!skipQueue && !isDataError) {
         if (this.messageQueue.length < this.maxQueueSize) {
@@ -390,11 +355,11 @@ export default class MessageNexus<
         try {
           this.driver.send(message)
         } catch (error) {
-          const isDataError =
-            typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'DataCloneError'
+          const err = error instanceof Error ? error : new Error(String(error))
+          const isDataError = err.name === 'NexusError' && (err as NexusError).code === NexusErrorCode.InvalidParams && err.message === 'Message payload cannot be cloned'
           if (isDataError) {
             this.logger.error('Message payload cannot be cloned during flush, dropping', {
-              error: (error as Error).message,
+              error: err.message,
             })
             continue
           }
@@ -404,7 +369,7 @@ export default class MessageNexus<
       }
     }
     this.metrics.queuedMessages = this.messageQueue.length
-    this._notifyMetrics()
+    this._notifyMetrics(true)
   }
 
   async notify<K extends keyof NotificationMap>(
@@ -605,9 +570,24 @@ export default class MessageNexus<
     return () => this.metricsCallbacks.delete(callback)
   }
 
-  private _notifyMetrics() {
-    const metrics = this.getMetrics()
-    this.metricsCallbacks.forEach((callback) => callback(metrics))
+  private _notifyMetrics(force = false) {
+    if (force) {
+      if (this.metricsThrottleTimer) {
+        clearTimeout(this.metricsThrottleTimer)
+        this.metricsThrottleTimer = null
+      }
+      const metrics = this.getMetrics()
+      this.metricsCallbacks.forEach((callback) => callback(metrics))
+      return
+    }
+
+    if (!this.metricsThrottleTimer) {
+      this.metricsThrottleTimer = setTimeout(() => {
+        this.metricsThrottleTimer = null
+        const metrics = this.getMetrics()
+        this.metricsCallbacks.forEach((callback) => callback(metrics))
+      }, 100)
+    }
   }
 
   handle<K extends keyof InvokeMap>(
@@ -692,6 +672,12 @@ export default class MessageNexus<
   }
 
   destroy() {
+    if (this.metricsThrottleTimer) {
+      clearTimeout(this.metricsThrottleTimer)
+      this.metricsThrottleTimer = null
+    }
+    this._notifyMetrics(true)
+    
     this.logger.info('MessageNexus destroying', {
       instanceId: this.instanceId,
       pendingMessages: this.pendingTasks.size,

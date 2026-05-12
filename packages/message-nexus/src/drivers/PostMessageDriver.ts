@@ -1,5 +1,6 @@
 import BaseDriver, { type Message } from './BaseDriver'
 import { MESSAGE_NEXUS_PROTOCOL } from '../utils/constants'
+import { NexusError, NexusErrorCode } from '../errors'
 
 export interface BridgeMessage extends Message {
   __messageBridge: typeof MESSAGE_NEXUS_PROTOCOL
@@ -48,7 +49,14 @@ export default class PostMessageDriver extends BaseDriver {
       ...data,
       __messageBridge: MESSAGE_NEXUS_PROTOCOL,
     }
-    this.targetWindow.postMessage(bridgeMessage, this.targetOrigin)
+    try {
+      this.targetWindow.postMessage(bridgeMessage, this.targetOrigin)
+    } catch (error) {
+      if (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'DataCloneError') {
+        throw new NexusError('Message payload cannot be cloned', NexusErrorCode.InvalidParams)
+      }
+      throw error
+    }
   }
 
   destroy() {
