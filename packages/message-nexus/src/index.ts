@@ -21,6 +21,11 @@ import {
 import { createEmitter } from './utils/emitter'
 import { NexusError, NexusErrorCode } from './errors'
 
+import { MessageQueue } from './core/MessageQueue'
+import { RpcScheduler } from './core/RpcScheduler'
+import { MiddlewarePipeline, type MiddlewareContext } from './core/MiddlewarePipeline'
+import { EventRouter, type InvokeContext, type InvokeHandler, type NotificationHandler } from './core/EventRouter'
+
 export interface MessageNexusOptions {
   instanceId?: string
   timeout?: number
@@ -75,27 +80,6 @@ export interface NotificationOptions<K extends string = string, P = unknown> {
   metadata?: Record<string, unknown>
 }
 
-export interface InvokeContext {
-  messageId?: string
-  from: string
-  to?: string
-  metadata?: Record<string, unknown>
-}
-
-/**
- * Handler for an invoked method.
- */
-export type InvokeHandler<P = unknown, R = unknown> = (
-  params: P,
-  context: InvokeContext,
-) => R | Promise<R>
-
-/**
- * Handler for a notification.
- */
-export type NotificationHandler<P = any> = (params: P, context: InvokeContext) => void
-
-
 export type ErrorHandler = (error: Error | NexusError, context?: Record<string, unknown>) => void
 
 export type RequestInterceptor = (message: Message) => Message | Promise<Message>
@@ -118,24 +102,15 @@ export default class MessageNexus<
   NotificationMap extends object = Record<string, any>,
 > {
   driver: BaseDriver
-  pendingTasks: Map<
-    string,
-    {
-      resolve: (value: unknown) => void
-      reject: (reason?: unknown) => void
-      timer: ReturnType<typeof setTimeout>
-      to?: string
-      timestamp: number
-    }
-  >
-  invokeHandlers: Map<string, InvokeHandler>
-  notificationHandlers: Map<string, Set<NotificationHandler>>
   timeout: number
   instanceId: string
-  private messageQueue: Message[] = []
-  private maxQueueSize: number = 100
-  private requestInterceptors: RequestInterceptor[] = []
-  private responseInterceptors: ResponseInterceptor[] = []
+
+  private queue: MessageQueue
+  private scheduler: RpcScheduler
+  private requestPipeline: MiddlewarePipeline
+  private responsePipeline: MiddlewarePipeline
+  private router: EventRouter<InvokeMap, NotificationMap>
+  
   private errorHandler: ErrorHandler | null = null
   private logger: LoggerInterface
   private metrics: Metrics = {
@@ -149,6 +124,23 @@ export default class MessageNexus<
   }
   private metricsCallbacks: Set<MetricsCallback> = new Set()
   private metricsThrottleTimer: ReturnType<typeof setTimeout> | null = null
+
+  // Exposed for tests and backward compatibility
+  get pendingTasks() {
+    return (this.scheduler as any).pendingTasks as Map<string, any>
+  }
+  
+  get invokeHandlers() {
+    return (this.router as any).invokeHandlers as Map<string, any>
+  }
+  
+  get notificationHandlers() {
+    return (this.router as any).notificationHandlers as Map<string, any>
+  }
+
+  get messageQueue() {
+    return (this.queue as any).queue as Message[]
+  }
 
   constructor(driver: BaseDriver, options?: MessageNexusOptions) {
     this.driver = driver
@@ -176,6 +168,26 @@ export default class MessageNexus<
       }
     }
 
+    this.queue = new MessageQueue({
+      maxQueueSize: 100,
+      logger: this.logger,
+      onMessageDropped: (droppedMessage) => {
+        const payload = droppedMessage.payload as any
+        if (payload && 'id' in payload) {
+          const droppedId = String(payload.id)
+          this.scheduler.rejectTask(droppedId, new NexusError('Message dropped due to queue overflow', NexusErrorCode.SendFailed))
+        }
+      }
+    })
+
+    this.scheduler = new RpcScheduler({
+      defaultTimeout: this.timeout
+    })
+
+    this.requestPipeline = new MiddlewarePipeline()
+    this.responsePipeline = new MiddlewarePipeline()
+    this.router = new EventRouter<InvokeMap, NotificationMap>()
+
     if (loggerEnabled) {
       this.logger.enable()
       this.logger.info('MessageNexus initialized', {
@@ -184,9 +196,6 @@ export default class MessageNexus<
         logLevel,
       })
     }
-    this.pendingTasks = new Map()
-    this.invokeHandlers = new Map()
-    this.notificationHandlers = new Map()
 
     this.driver.onMessage = (data) => this._handleIncoming(data)
     this.driver.onConnect = () => {
@@ -226,15 +235,13 @@ export default class MessageNexus<
     }
 
     const attempt = async (attemptNumber: number): Promise<GetResult<InvokeMap[K]>> => {
-      return new Promise<GetResult<InvokeMap[K]>>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          this.pendingTasks.delete(id)
-          this.metrics.messagesFailed++
-          this.metrics.pendingMessages--
-          reject(new NexusError(`Message timeout: ${method} (${id})`, NexusErrorCode.Timeout))
-        }, timeout)
-
-        this.pendingTasks.set(id, { resolve: resolve as unknown as (value: unknown) => void, reject, timer, timestamp: Date.now() })
+      try {
+        const promise = this.scheduler.createTask<GetResult<InvokeMap[K]>>(
+          id, method, timeout, 
+          () => {
+            this.metrics.messagesFailed++
+          }
+        )
 
         const rpcRequest: JsonRpcRequest = {
           jsonrpc: '2.0',
@@ -254,34 +261,46 @@ export default class MessageNexus<
         this._sendMessage(message, !isFinalAttempt).catch(() => {
           // Error is already handled inside _sendMessage
         })
-      }).catch((error) => {
+
+        return await promise
+      } catch (error) {
         if (attemptNumber < retryCount) {
           return new Promise<GetResult<InvokeMap[K]>>((resolve) =>
             setTimeout(() => resolve(attempt(attemptNumber + 1)), retryDelay * (attemptNumber + 1)),
           )
         }
         this.metrics.messagesFailed++
-        this.metrics.pendingMessages--
         throw error
-      })
+      }
     }
 
     return attempt(0)
   }
 
   private async _sendMessage(message: Message, skipQueue: boolean = false) {
-    let finalMessage = message
+    const ctx: MiddlewareContext = {
+      message,
+      direction: 'outbound',
+      nexusInstanceId: this.instanceId
+    }
+
     try {
-      for (const interceptor of this.requestInterceptors) {
-        finalMessage = await interceptor(finalMessage)
+      if (!this.requestPipeline.isEmpty) {
+        await this.requestPipeline.execute(ctx)
       }
     } catch (err) {
       this.logger.error('Request interceptor failed', { error: String(err) })
       this.metrics.messagesFailed++
-      this.errorHandler?.(err instanceof Error ? err : new Error(String(err)), { message: finalMessage })
+      this.errorHandler?.(err instanceof Error ? err : new Error(String(err)), { message: ctx.message })
+      
+      const payload = ctx.message.payload as any
+      if (payload && 'id' in payload) {
+        this.scheduler.rejectTask(String(payload.id), err instanceof Error ? err : new Error(String(err)))
+      }
       return
     }
 
+    const finalMessage = ctx.message
     const payload = finalMessage.payload as JsonRpcRequest | JsonRpcResponse | JsonRpcNotification
     const isRequest = 'method' in payload
     const messageId = 'id' in payload ? String(payload.id) : undefined
@@ -290,9 +309,6 @@ export default class MessageNexus<
     try {
       this.driver.send(finalMessage)
       this.metrics.messagesSent++
-      if (isRequest && messageId !== undefined) {
-        this.metrics.pendingMessages++
-      }
       this.logger.debug('Message sent', { messageId, type: typeOrMethod })
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
@@ -303,19 +319,7 @@ export default class MessageNexus<
       const isDataError = err.name === 'NexusError' && (err as NexusError).code === NexusErrorCode.InvalidParams && err.message === 'Message payload cannot be cloned'
 
       if (!skipQueue && !isDataError) {
-        if (this.messageQueue.length < this.maxQueueSize) {
-          this.messageQueue.push(finalMessage)
-          this.logger.debug('Message queued', {
-            messageId,
-            queueSize: this.messageQueue.length + 1,
-          })
-        } else {
-          this.logger.warn('Message queue full, dropping oldest message', {
-            queueSize: this.messageQueue.length,
-          })
-          this.messageQueue.shift()
-          this.messageQueue.push(finalMessage)
-        }
+        this.queue.enqueue(finalMessage)
       } else {
         this.logger.debug(
           isDataError ? 'Message dropped due to data error' : 'Message failed but skipQueue is true (likely retrying)',
@@ -323,22 +327,31 @@ export default class MessageNexus<
         )
       }
     }
-    this.metrics.queuedMessages = this.messageQueue.length
     this._notifyMetrics()
   }
 
   useRequestInterceptor(interceptor: RequestInterceptor) {
-    this.requestInterceptors.push(interceptor)
-    return () => {
-      this.requestInterceptors = this.requestInterceptors.filter((i) => i !== interceptor)
-    }
+    return this.requestPipeline.use(async (ctx, next) => {
+      ctx.message = await Promise.race([
+        interceptor(ctx.message),
+        new Promise<Message>((_, reject) =>
+          setTimeout(() => reject(new Error('Request interceptor timed out')), 3000)
+        )
+      ])
+      await next()
+    })
   }
 
   useResponseInterceptor(interceptor: ResponseInterceptor) {
-    this.responseInterceptors.push(interceptor)
-    return () => {
-      this.responseInterceptors = this.responseInterceptors.filter((i) => i !== interceptor)
-    }
+    return this.responsePipeline.use(async (ctx, next) => {
+      ctx.message = await Promise.race([
+        interceptor(ctx.message),
+        new Promise<Message>((_, reject) =>
+          setTimeout(() => reject(new Error('Response interceptor timed out')), 3000)
+        )
+      ])
+      await next()
+    })
   }
 
   onError(handler: ErrorHandler) {
@@ -349,8 +362,8 @@ export default class MessageNexus<
   }
 
   flushQueue() {
-    while (this.messageQueue.length > 0) {
-      const message = this.messageQueue.shift()
+    while (!this.queue.isEmpty) {
+      const message = this.queue.dequeue()
       if (message) {
         try {
           this.driver.send(message)
@@ -363,12 +376,11 @@ export default class MessageNexus<
             })
             continue
           }
-          this.messageQueue.unshift(message)
+          this.queue.unshift(message)
           break
         }
       }
     }
-    this.metrics.queuedMessages = this.messageQueue.length
     this._notifyMetrics(true)
   }
 
@@ -409,52 +421,32 @@ export default class MessageNexus<
     await this._sendMessage(message)
   }
 
-  private _validateMessage(data: unknown): data is Message {
-    if (!data || typeof data !== 'object') return false
-    const env = data as Partial<Message>
-
-    if (typeof env.from !== 'string') return false
-    if (env.to !== undefined && typeof env.to !== 'string') return false
-    if (env.metadata !== undefined && typeof env.metadata !== 'object') return false
-
-    const payload = env.payload as any
-    if (!payload || typeof payload !== 'object') return false
-    if (payload.jsonrpc !== '2.0') return false
-
-    const isRequest = 'method' in payload
-    const isResponse = 'result' in payload || 'error' in payload
-
-    if (!isRequest && !isResponse) return false
-
-    return true
-  }
-
   async _handleIncoming(data: unknown) {
-    if (!this._validateMessage(data)) {
+    if (!EventRouter.validateMessage(data)) {
       this.logger.error('Invalid message format received', { data })
       this.errorHandler?.(new Error('Invalid message format received'), { data })
       this.metrics.messagesFailed++
       return
     }
 
-    let envelope = data as Message
+    const ctx: MiddlewareContext = {
+      message: data,
+      direction: 'inbound',
+      nexusInstanceId: this.instanceId
+    }
 
     try {
-      for (const interceptor of this.responseInterceptors) {
-        envelope = await Promise.race([
-          interceptor(envelope),
-          new Promise<Message>((_, reject) =>
-            setTimeout(() => reject(new Error('Response interceptor timed out')), 3000)
-          )
-        ])
+      if (!this.responsePipeline.isEmpty) {
+        await this.responsePipeline.execute(ctx)
       }
     } catch (err) {
       this.logger.error('Response interceptor failed', { error: String(err) })
       this.metrics.messagesFailed++
-      this.errorHandler?.(err instanceof Error ? err : new Error(String(err)), { message: envelope })
+      this.errorHandler?.(err instanceof Error ? err : new Error(String(err)), { message: ctx.message })
       return
     }
 
+    const envelope = ctx.message
     const payload = envelope.payload as JsonRpcRequest | JsonRpcResponse | JsonRpcNotification
 
     if (envelope.to && envelope.to !== this.instanceId) {
@@ -470,19 +462,8 @@ export default class MessageNexus<
       const response = payload as JsonRpcResponse
       const id = String(response.id)
 
-      if (this.pendingTasks.has(id)) {
-        const { resolve, reject, timer, timestamp } = this.pendingTasks.get(id)!
-        clearTimeout(timer)
-        this.pendingTasks.delete(id)
-
-        const latency = Date.now() - timestamp
-        this.metrics.messagesReceived++
-        this.metrics.pendingMessages--
-        this.metrics.totalLatency += latency
-        this.metrics.averageLatency = this.metrics.totalLatency / this.metrics.messagesReceived
-
-        this.logger.debug('Response received', { messageId: id, latency })
-
+      if (this.scheduler.hasTask(id)) {
+        let latencyInfo
         if (response.error) {
           const err = new NexusError(
             response.error.message,
@@ -491,12 +472,18 @@ export default class MessageNexus<
             response.error.name,
             response.error.stack,
           )
-          reject(err)
+          latencyInfo = this.scheduler.rejectTask(id, err)
         } else {
-          resolve(response.result)
+          latencyInfo = this.scheduler.resolveTask(id, response.result)
         }
 
-        this._notifyMetrics()
+        if (latencyInfo) {
+          this.metrics.messagesReceived++
+          this.metrics.totalLatency += latencyInfo.latency
+          this.metrics.averageLatency = this.metrics.totalLatency / this.metrics.messagesReceived
+          this.logger.debug('Response received', { messageId: id, latency: latencyInfo.latency })
+          this._notifyMetrics()
+        }
       } else {
         this.logger.warn('Orphaned response received', { messageId: id })
       }
@@ -521,7 +508,7 @@ export default class MessageNexus<
           metadata: envelope.metadata,
         }
 
-        const handler = this.invokeHandlers.get(request.method)
+        const handler = this.router.getInvokeHandler(request.method)
         if (handler) {
           try {
             const result = await handler(request.params, context)
@@ -547,7 +534,7 @@ export default class MessageNexus<
           metadata: envelope.metadata,
         }
 
-        const handlers = this.notificationHandlers.get(notification.method)
+        const handlers = this.router.getNotificationHandlers(notification.method)
         if (handlers) {
           handlers.forEach((handler) => {
             try {
@@ -562,7 +549,11 @@ export default class MessageNexus<
   }
 
   getMetrics(): Metrics {
-    return { ...this.metrics, pendingMessages: this.pendingTasks.size }
+    return { 
+      ...this.metrics, 
+      pendingMessages: this.scheduler.size,
+      queuedMessages: this.queue.length
+    }
   }
 
   onMetrics(callback: MetricsCallback) {
@@ -594,39 +585,28 @@ export default class MessageNexus<
     method: K,
     handler: InvokeHandler<GetParams<InvokeMap[K]>, GetResult<InvokeMap[K]>>,
   ) {
-    if (this.invokeHandlers.has(method as string)) {
+    if (this.router.hasInvokeHandler(method as string)) {
       this.logger.warn(`Overriding existing handler for method: ${method as string}`)
     }
-    this.invokeHandlers.set(method as string, handler as InvokeHandler)
-    return () => this.invokeHandlers.delete(method as string)
+    return this.router.handle(method as string, handler as InvokeHandler<any, any>)
   }
 
   removeHandler(method: keyof InvokeMap) {
-    this.invokeHandlers.delete(method as string)
+    this.router.removeHandler(method as string)
   }
 
   onNotification<K extends keyof NotificationMap>(
     method: K,
     handler: NotificationHandler<NotificationMap[K]>,
   ) {
-    if (!this.notificationHandlers.has(method as string)) {
-      this.notificationHandlers.set(method as string, new Set())
-    }
-    this.notificationHandlers.get(method as string)!.add(handler as NotificationHandler)
-    return () => this.offNotification(method, handler)
+    return this.router.onNotification(method as string, handler as NotificationHandler<any>)
   }
 
   offNotification<K extends keyof NotificationMap>(
     method: K,
     handler: NotificationHandler<NotificationMap[K]>,
   ) {
-    const handlers = this.notificationHandlers.get(method as string)
-    if (handlers) {
-      handlers.delete(handler as NotificationHandler)
-      if (handlers.size === 0) {
-        this.notificationHandlers.delete(method as string)
-      }
-    }
+    this.router.offNotification(method as string, handler as NotificationHandler<any>)
   }
 
   private async _reply(messageId: string, to: string, payload: unknown) {
@@ -680,15 +660,18 @@ export default class MessageNexus<
     
     this.logger.info('MessageNexus destroying', {
       instanceId: this.instanceId,
-      pendingMessages: this.pendingTasks.size,
-      queuedMessages: this.messageQueue.length,
+      pendingMessages: this.scheduler.size,
+      queuedMessages: this.queue.length,
       metrics: this.getMetrics(),
     })
 
     this.driver.destroy?.()
 
-    this.invokeHandlers.clear()
-    this.notificationHandlers.clear()
+    this.scheduler.clearTasks()
+    this.queue.clear()
+    this.router.clear()
+    this.requestPipeline.clear()
+    this.responsePipeline.clear()
     this.metricsCallbacks.clear()
   }
 }
@@ -704,4 +687,10 @@ export {
   NexusError,
   NexusErrorCode,
 }
-export type { Message, LoggerInterface, SimpleLogger }
+export {
+  MessageQueue,
+  RpcScheduler,
+  MiddlewarePipeline,
+  EventRouter
+}
+export type { Message, LoggerInterface, SimpleLogger, InvokeContext, InvokeHandler, NotificationHandler, MiddlewareContext }

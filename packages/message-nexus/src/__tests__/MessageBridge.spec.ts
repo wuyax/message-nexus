@@ -27,6 +27,7 @@ describe('MessageNexus', () => {
       const sendSpy = vi.spyOn(mockDriver, 'send')
 
       const promise = bridge.invoke({ method: 'TEST_ACTION', params: { data: 'test' } })
+      
 
       expect(sendSpy).toHaveBeenCalledWith({
         from: bridge.instanceId,
@@ -511,7 +512,7 @@ describe('MessageNexus', () => {
     it('should drop oldest message when queue is full', async () => {
       const bridgeSmallQueue = new MessageNexus(mockDriver)
       // Force queue size limit to be 2 for testing
-      bridgeSmallQueue['maxQueueSize'] = 2
+      bridgeSmallQueue['queue']['maxQueueSize'] = 2
       vi.spyOn(mockDriver, 'send').mockImplementation(() => {
         throw new Error('Send failed')
       })
