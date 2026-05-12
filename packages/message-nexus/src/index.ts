@@ -476,7 +476,12 @@ export default class MessageNexus<
 
     try {
       for (const interceptor of this.responseInterceptors) {
-        envelope = await interceptor(envelope)
+        envelope = await Promise.race([
+          interceptor(envelope),
+          new Promise<Message>((_, reject) =>
+            setTimeout(() => reject(new Error('Response interceptor timed out')), 3000)
+          )
+        ])
       }
     } catch (err) {
       this.logger.error('Response interceptor failed', { error: String(err) })

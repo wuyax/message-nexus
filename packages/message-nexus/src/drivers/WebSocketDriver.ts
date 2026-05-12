@@ -1,8 +1,6 @@
 import BaseDriver, { type Message } from './BaseDriver'
 import { Logger, createConsoleHandler, LogLevel } from '../utils/logger'
-
-// Protocol identifier to distinguish MessageNexus messages from other WebSocket traffic
-const MESSAGE_NEXUS_PROTOCOL = 'message-nexus-v1'
+import { MESSAGE_NEXUS_PROTOCOL } from '../utils/constants'
 
 interface ReconnectOptions {
   maxRetries?: number
@@ -105,7 +103,8 @@ export default class WebSocketDriver extends BaseDriver {
     // Cap the maximum delay at 30 seconds (30000ms)
     const MAX_DELAY = 30000
     const calculatedDelay = this.retryInterval * Math.pow(2, this.retryCount)
-    const delay = Math.min(calculatedDelay, MAX_DELAY)
+    // Add jitter to avoid thundering herd problem
+    const delay = Math.min(calculatedDelay, MAX_DELAY) + Math.random() * 1000
 
     this.logger.info('Reconnecting scheduled', {
       delay,

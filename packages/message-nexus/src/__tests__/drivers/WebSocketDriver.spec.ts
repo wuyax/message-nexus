@@ -37,18 +37,24 @@ describe('WebSocketDriver', () => {
     
     const spySetTimeout = vi.spyOn(window, 'setTimeout')
 
-    // Attempt 1: retryCount = 1, delay = 2^1 * 1000 = 2000ms
+    // Attempt 1: retryCount = 1, delay = 2^1 * 1000 = 2000ms + jitter
     closeListener()
-    expect(spySetTimeout).toHaveBeenLastCalledWith(expect.any(Function), 2000)
+    let lastCall = spySetTimeout.mock.calls[spySetTimeout.mock.calls.length - 1]
+    expect(lastCall[0]).toEqual(expect.any(Function))
+    expect(lastCall[1]).toBeGreaterThanOrEqual(2000)
+    expect(lastCall[1]).toBeLessThan(3000)
 
     // Trigger the timeout so it reconnects
-    vi.advanceTimersByTime(2000)
+    vi.advanceTimersByTime(lastCall[1] as number)
 
-    // Attempt 2: retryCount = 2, delay = 2^2 * 1000 = 4000ms
+    // Attempt 2: retryCount = 2, delay = 2^2 * 1000 = 4000ms + jitter
     const secondWs = getWsInstance(1)
     const secondCloseListener = getListeners(secondWs, 'close')[0]
     secondCloseListener()
-    expect(spySetTimeout).toHaveBeenLastCalledWith(expect.any(Function), 4000)
+    lastCall = spySetTimeout.mock.calls[spySetTimeout.mock.calls.length - 1]
+    expect(lastCall[0]).toEqual(expect.any(Function))
+    expect(lastCall[1]).toBeGreaterThanOrEqual(4000)
+    expect(lastCall[1]).toBeLessThan(5000)
     
     driver.destroy()
   })

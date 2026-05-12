@@ -1,7 +1,5 @@
 import BaseDriver, { type Message } from './BaseDriver'
-
-// Protocol identifier to distinguish MessageNexus messages from user-initiated messages
-const MESSAGE_NEXUS_PROTOCOL = 'message-nexus-v1'
+import { MESSAGE_NEXUS_PROTOCOL } from '../utils/constants'
 
 export interface BridgeMessage extends Message {
   __messageBridge: typeof MESSAGE_NEXUS_PROTOCOL
