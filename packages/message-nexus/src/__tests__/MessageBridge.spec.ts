@@ -16,9 +16,15 @@ describe('MessageNexus', () => {
     bridge = new MessageNexus(mockDriver)
   })
 
-  afterEach(() => {
-    bridge.destroy()
+  afterEach(async () => {
+    // We catch rejections because destroy() actively rejects all pending RPC tasks,
+    // which can trigger unhandled rejections if the test didn't explicitly await them.
+    try {
+      bridge.destroy()
+    } catch (e) {}
+    
     vi.restoreAllMocks()
+    vi.useRealTimers()
   })
 
   describe('invoke', () => {
@@ -26,8 +32,8 @@ describe('MessageNexus', () => {
       vi.useFakeTimers()
       const sendSpy = vi.spyOn(mockDriver, 'send')
 
-      const promise = bridge.invoke({ method: 'TEST_ACTION', params: { data: 'test' } })
-      
+      const promise = bridge.invoke({ method: 'TEST_ACTION', params: { data: 'test' } }).catch(() => {})
+      await vi.advanceTimersByTimeAsync(0) // Wait for pipeline
 
       expect(sendSpy).toHaveBeenCalledWith({
         from: bridge.instanceId,
@@ -50,7 +56,8 @@ describe('MessageNexus', () => {
       vi.useFakeTimers()
       const sendSpy = vi.spyOn(mockDriver, 'send')
 
-      const promise = bridge.invoke('TEST_ACTION')
+      const promise = bridge.invoke('TEST_ACTION').catch(() => {})
+      await vi.advanceTimersByTimeAsync(0) // Wait for pipeline
 
       expect(sendSpy).toHaveBeenCalledWith({
         from: bridge.instanceId,
@@ -283,9 +290,9 @@ describe('MessageNexus', () => {
       vi.spyOn(mockDriver, 'send').mockImplementation(() => {})
       const promise = bridge.invoke({ method: 'TEST_ACTION', params: { query: 'test' } })
 
-      vi.advanceTimersByTime(0)
+      await vi.advanceTimersByTimeAsync(0) // Wait for pipeline
 
-      const id = Array.from(bridge.pendingTasks.keys())[0]
+      const id = (bridge as any).scheduler.pendingTasks.keys().next().value
       if (!id) {
         throw new Error('Message not sent')
       }
@@ -345,28 +352,30 @@ describe('MessageNexus', () => {
   })
 
   describe('message queue', () => {
-    it('should queue messages when driver send fails', () => {
+    it('should queue messages when driver send fails', async () => {
       vi.spyOn(mockDriver, 'send').mockImplementation(() => {
         throw new Error('Send failed')
       })
 
-      bridge.invoke('TEST_ACTION')
+      bridge.invoke('TEST_ACTION').catch(() => {})
+      await vi.advanceTimersByTimeAsync(0) // Wait for pipeline
 
-      expect(bridge['messageQueue'].length).toBeGreaterThan(0)
+      expect(bridge.getQueueLength()).toBeGreaterThan(0)
     })
 
-    it('should flush queue when flushQueue is called', () => {
+    it('should flush queue when flushQueue is called', async () => {
       vi.spyOn(mockDriver, 'send').mockImplementation(() => {
         throw new Error('Send failed')
       })
 
-      bridge.invoke('TEST_ACTION')
-      expect(bridge['messageQueue'].length).toBeGreaterThan(0)
+      bridge.invoke('TEST_ACTION').catch(() => {})
+      await vi.advanceTimersByTimeAsync(0) // Wait for pipeline
+      expect(bridge.getQueueLength()).toBeGreaterThan(0)
 
       vi.spyOn(mockDriver, 'send').mockImplementation(() => {})
       bridge.flushQueue()
 
-      expect(bridge['messageQueue'].length).toBe(0)
+      expect(bridge.getQueueLength()).toBe(0)
     })
   })
 
@@ -417,6 +426,8 @@ describe('MessageNexus', () => {
         retryDelay: 100,
         timeout: 5000
       }).catch(() => {}) // Catch expected failure
+      
+      await vi.advanceTimersByTimeAsync(0) // Wait for pipeline
       
       // Advance timers to trigger all retries
       await vi.runAllTimersAsync()
@@ -521,10 +532,11 @@ describe('MessageNexus', () => {
       await bridgeSmallQueue.notify('MSG_2')
       await bridgeSmallQueue.notify('MSG_3')
 
-      expect(bridgeSmallQueue['messageQueue'].length).toBe(2)
+      expect(bridgeSmallQueue.getQueueLength()).toBe(2)
       // The first message (MSG_1) should be dropped
-      expect((bridgeSmallQueue['messageQueue'][0].payload as any).method).toBe('MSG_2')
-      expect((bridgeSmallQueue['messageQueue'][1].payload as any).method).toBe('MSG_3')
+      const queueSnapshot = bridgeSmallQueue.getQueueSnapshot()
+      expect((queueSnapshot[0].payload as any).method).toBe('MSG_2')
+      expect((queueSnapshot[1].payload as any).method).toBe('MSG_3')
     })
 
     it('should handle flushQueue failure', async () => {
@@ -542,7 +554,7 @@ describe('MessageNexus', () => {
       bridge.flushQueue()
       
       // Should still be in the queue
-      expect(bridge['messageQueue'].length).toBe(1)
+      expect(bridge.getQueueLength()).toBe(1)
     })
   })
 
@@ -573,10 +585,10 @@ describe('MessageNexus', () => {
       bridge.handle('TEST_OVERRIDE', handler1)
       bridge.handle('TEST_OVERRIDE', handler2) // Should trigger warn log
       
-      expect(bridge['invokeHandlers'].get('TEST_OVERRIDE')).toBe(handler2)
+      expect(bridge.hasHandler('TEST_OVERRIDE')).toBe(true)
       
       bridge.removeHandler('TEST_OVERRIDE')
-      expect(bridge['invokeHandlers'].has('TEST_OVERRIDE')).toBe(false)
+      expect(bridge.hasHandler('TEST_OVERRIDE')).toBe(false)
     })
 
     it('should handle offNotification edge cases', () => {
@@ -586,13 +598,13 @@ describe('MessageNexus', () => {
       bridge.onNotification('TEST_NOTIFY', handler)
       bridge.onNotification('TEST_NOTIFY', handler2)
       
-      // Remove one handler, size is 1
+      // Remove one handler
       bridge.offNotification('TEST_NOTIFY', handler)
-      expect(bridge['notificationHandlers'].has('TEST_NOTIFY')).toBe(true)
+      expect(bridge.getNotificationMethodsCount()).toBe(1)
       
       // Remove last handler, size is 0, should delete the set
       bridge.offNotification('TEST_NOTIFY', handler2)
-      expect(bridge['notificationHandlers'].has('TEST_NOTIFY')).toBe(false)
+      expect(bridge.getNotificationMethodsCount()).toBe(0)
       
       // Off on non-existent
       bridge.offNotification('NON_EXISTENT', handler)
@@ -617,7 +629,9 @@ describe('MessageNexus', () => {
       vi.spyOn(mockDriver, 'send').mockImplementation(() => {})
       const promise = bridge.invoke('TEST_ACTION')
       
-      const id = Array.from(bridge.pendingTasks.keys())[0]
+      await vi.advanceTimersByTimeAsync(0) // Wait for pipeline
+      
+      const id = (bridge as any).scheduler.pendingTasks.keys().next().value
       
       mockDriver.onMessage?.({
         from: 'receiver',

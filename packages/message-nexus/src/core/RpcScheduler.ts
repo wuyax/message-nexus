@@ -75,9 +75,12 @@ export class RpcScheduler {
     return this.pendingTasks.size
   }
 
-  clearTasks(): void {
+  clearTasks(error?: unknown): void {
     for (const [id, task] of this.pendingTasks.entries()) {
       clearTimeout(task.timer)
+      if (error !== undefined) {
+        task.reject(error)
+      }
     }
     this.pendingTasks.clear()
   }

@@ -9,6 +9,7 @@ describe('DataCloneError Handling in flushQueue', () => {
   }
 
   it('should skip messages causing DataCloneError in flushQueue and continue processing', async () => {
+    vi.useFakeTimers()
     const driver = new MockDriver()
     const nexus = new MessageNexus(driver, { loggerEnabled: false })
     
@@ -21,11 +22,11 @@ describe('DataCloneError Handling in flushQueue', () => {
     // To do this, we make the first send fail with a normal error so it gets queued
     driver.send.mockImplementationOnce(() => { throw normalError })
     nexus.notify({ method: 'message1' })
-    await new Promise(r => setTimeout(r, 0))
+    await vi.advanceTimersByTimeAsync(0)
     
     driver.send.mockImplementationOnce(() => { throw normalError })
     nexus.notify({ method: 'message2' })
-    await new Promise(r => setTimeout(r, 0))
+    await vi.advanceTimersByTimeAsync(0)
     
     expect(nexus.getMetrics().queuedMessages).toBe(2)
     
@@ -48,6 +49,7 @@ describe('DataCloneError Handling in flushQueue', () => {
   })
 
   it('should stop flushQueue on non-DataCloneError and keep message in queue', async () => {
+    vi.useFakeTimers()
     const driver = new MockDriver()
     const nexus = new MessageNexus(driver, { loggerEnabled: false })
     
@@ -56,11 +58,11 @@ describe('DataCloneError Handling in flushQueue', () => {
     // Populate queue
     driver.send.mockImplementationOnce(() => { throw normalError })
     nexus.notify({ method: 'message1' })
-    await new Promise(r => setTimeout(r, 0))
+    await vi.advanceTimersByTimeAsync(0)
     
     driver.send.mockImplementationOnce(() => { throw normalError })
     nexus.notify({ method: 'message2' })
-    await new Promise(r => setTimeout(r, 0))
+    await vi.advanceTimersByTimeAsync(0)
     
     expect(nexus.getMetrics().queuedMessages).toBe(2)
     

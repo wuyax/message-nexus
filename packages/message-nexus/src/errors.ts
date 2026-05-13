@@ -13,6 +13,7 @@ export enum NexusErrorCode {
   Timeout = -32001,
   SendFailed = -32002,
   InvalidResponse = -32003,
+  InstanceDestroyed = -32004,
 }
 
 /**

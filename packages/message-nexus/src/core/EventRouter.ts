@@ -70,6 +70,14 @@ export class EventRouter<
     return this.notificationHandlers.get(method)
   }
 
+  get invokeHandlersCount(): number {
+    return this.invokeHandlers.size
+  }
+
+  get notificationHandlersCount(): number {
+    return this.notificationHandlers.size
+  }
+
   clear(): void {
     this.invokeHandlers.clear()
     this.notificationHandlers.clear()
@@ -79,19 +87,48 @@ export class EventRouter<
     if (!data || typeof data !== 'object') return false
     const env = data as Partial<Message>
 
-    if (typeof env.from !== 'string') return false
-    if (env.to !== undefined && typeof env.to !== 'string') return false
-    if (env.metadata !== undefined && typeof env.metadata !== 'object') return false
+    // 1. Basic Envelope Validation
+    if (typeof env.from !== 'string' || env.from.trim() === '') return false
+    if (env.to !== undefined && (typeof env.to !== 'string' || env.to.trim() === '')) return false
+    if (env.metadata !== undefined && (typeof env.metadata !== 'object' || env.metadata === null)) return false
 
+    // 2. Payload Validation
     const payload = env.payload as any
-    if (!payload || typeof payload !== 'object') return false
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false
     if (payload.jsonrpc !== '2.0') return false
 
-    const isRequest = 'method' in payload
-    const isResponse = 'result' in payload || 'error' in payload
+    // 3. ID Validation (if present, must be string, number, or null)
+    if ('id' in payload) {
+      const id = payload.id
+      if (id !== null && typeof id !== 'string' && typeof id !== 'number') return false
+    }
 
-    if (!isRequest && !isResponse) return false
+    // 4. Branching Logic (Request vs Notification vs Response)
+    const hasMethod = typeof payload.method === 'string' && payload.method.trim() !== ''
+    const hasResult = 'result' in payload
+    const hasError = payload.error !== undefined && typeof payload.error === 'object' && payload.error !== null
 
-    return true
+    // Request or Notification
+    if (hasMethod) {
+      // If it has a method, it cannot also be a response
+      if (hasResult || hasError) return false
+      return true
+    }
+
+    // Response
+    if (hasResult || hasError) {
+      // Response MUST have an ID
+      if (!('id' in payload)) return false
+      // Cannot have both result and error
+      if (hasResult && hasError) return false
+      
+      if (hasError) {
+        if (typeof payload.error.code !== 'number') return false
+        if (typeof payload.error.message !== 'string') return false
+      }
+      return true
+    }
+
+    return false
   }
 }

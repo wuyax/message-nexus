@@ -20,6 +20,7 @@ import {
 } from './utils/logger'
 import { createEmitter } from './utils/emitter'
 import { NexusError, NexusErrorCode } from './errors'
+import { safeExecute } from './utils/safe'
 
 import { MessageQueue } from './core/MessageQueue'
 import { RpcScheduler } from './core/RpcScheduler'
@@ -29,6 +30,7 @@ import { EventRouter, type InvokeContext, type InvokeHandler, type NotificationH
 export interface MessageNexusOptions {
   instanceId?: string
   timeout?: number
+  maxQueueSize?: number
   logger?: LoggerInterface | SimpleLogger
   loggerEnabled?: boolean
   logLevel?: LogLevel
@@ -124,23 +126,7 @@ export default class MessageNexus<
   }
   private metricsCallbacks: Set<MetricsCallback> = new Set()
   private metricsThrottleTimer: ReturnType<typeof setTimeout> | null = null
-
-  // Exposed for tests and backward compatibility
-  get pendingTasks() {
-    return (this.scheduler as any).pendingTasks as Map<string, any>
-  }
-  
-  get invokeHandlers() {
-    return (this.router as any).invokeHandlers as Map<string, any>
-  }
-  
-  get notificationHandlers() {
-    return (this.router as any).notificationHandlers as Map<string, any>
-  }
-
-  get messageQueue() {
-    return (this.queue as any).queue as Message[]
-  }
+  private _isDestroyed: boolean = false
 
   constructor(driver: BaseDriver, options?: MessageNexusOptions) {
     this.driver = driver
@@ -169,7 +155,7 @@ export default class MessageNexus<
     }
 
     this.queue = new MessageQueue({
-      maxQueueSize: 100,
+      maxQueueSize: options?.maxQueueSize ?? 100,
       logger: this.logger,
       onMessageDropped: (droppedMessage) => {
         const payload = droppedMessage.payload as any
@@ -264,6 +250,9 @@ export default class MessageNexus<
 
         return await promise
       } catch (error) {
+        if (this._isDestroyed) {
+          throw error
+        }
         if (attemptNumber < retryCount) {
           return new Promise<GetResult<InvokeMap[K]>>((resolve) =>
             setTimeout(() => resolve(attempt(attemptNumber + 1)), retryDelay * (attemptNumber + 1)),
@@ -291,7 +280,8 @@ export default class MessageNexus<
     } catch (err) {
       this.logger.error('Request interceptor failed', { error: String(err) })
       this.metrics.messagesFailed++
-      this.errorHandler?.(err instanceof Error ? err : new Error(String(err)), { message: ctx.message })
+      const wrappedErr = err instanceof Error ? err : new Error(String(err))
+      safeExecute(() => this.errorHandler?.(wrappedErr, { message: ctx.message }))
       
       const payload = ctx.message.payload as any
       if (payload && 'id' in payload) {
@@ -314,7 +304,7 @@ export default class MessageNexus<
       const err = error instanceof Error ? error : new Error(String(error))
       this.metrics.messagesFailed++
       this.logger.error('Failed to send message', { error: err.message, messageId })
-      this.errorHandler?.(err, { message: finalMessage })
+      safeExecute(() => this.errorHandler?.(err, { message: finalMessage }))
 
       const isDataError = err.name === 'NexusError' && (err as NexusError).code === NexusErrorCode.InvalidParams && err.message === 'Message payload cannot be cloned'
 
@@ -424,13 +414,13 @@ export default class MessageNexus<
   async _handleIncoming(data: unknown) {
     if (!EventRouter.validateMessage(data)) {
       this.logger.error('Invalid message format received', { data })
-      this.errorHandler?.(new Error('Invalid message format received'), { data })
+      safeExecute(() => this.errorHandler?.(new Error('Invalid message format received'), { data }))
       this.metrics.messagesFailed++
       return
     }
 
     const ctx: MiddlewareContext = {
-      message: data,
+      message: data as any,
       direction: 'inbound',
       nexusInstanceId: this.instanceId
     }
@@ -442,7 +432,8 @@ export default class MessageNexus<
     } catch (err) {
       this.logger.error('Response interceptor failed', { error: String(err) })
       this.metrics.messagesFailed++
-      this.errorHandler?.(err instanceof Error ? err : new Error(String(err)), { message: ctx.message })
+      const wrappedErr = err instanceof Error ? err : new Error(String(err))
+      safeExecute(() => this.errorHandler?.(wrappedErr, { message: ctx.message }))
       return
     }
 
@@ -537,11 +528,9 @@ export default class MessageNexus<
         const handlers = this.router.getNotificationHandlers(notification.method)
         if (handlers) {
           handlers.forEach((handler) => {
-            try {
-              handler(notification.params, context)
-            } catch (error) {
+            safeExecute(() => handler(notification.params, context), (error) => {
               this.logger.error('Error in notification handler', { error: String(error) })
-            }
+            })
           })
         }
       }
@@ -556,6 +545,49 @@ export default class MessageNexus<
     }
   }
 
+  /**
+   * Returns the number of messages currently in the offline queue.
+   */
+  getQueueLength(): number {
+    return this.queue.length
+  }
+
+  /**
+   * Returns a snapshot of the current message queue.
+   */
+  getQueueSnapshot(): Message[] {
+    // Return a shallow copy to prevent external mutation of the internal queue
+    return (this.queue as any).queue.slice()
+  }
+
+  /**
+   * Returns the number of pending RPC tasks waiting for a response.
+   */
+  getPendingTasksCount(): number {
+    return this.scheduler.size
+  }
+
+  /**
+   * Returns the number of registered invoke handlers.
+   */
+  getHandlersCount(): number {
+    return this.router.invokeHandlersCount
+  }
+
+  /**
+   * Returns the number of registered notification methods.
+   */
+  getNotificationMethodsCount(): number {
+    return this.router.notificationHandlersCount
+  }
+
+  /**
+   * Returns true if a specific invoke handler is registered.
+   */
+  hasHandler(method: string): boolean {
+    return this.router.hasInvokeHandler(method)
+  }
+
   onMetrics(callback: MetricsCallback) {
     this.metricsCallbacks.add(callback)
     return () => this.metricsCallbacks.delete(callback)
@@ -568,7 +600,11 @@ export default class MessageNexus<
         this.metricsThrottleTimer = null
       }
       const metrics = this.getMetrics()
-      this.metricsCallbacks.forEach((callback) => callback(metrics))
+      this.metricsCallbacks.forEach((callback) => {
+        safeExecute(() => callback(metrics), (err) => {
+          this.logger.error('Error in metrics callback', { error: String(err) })
+        })
+      })
       return
     }
 
@@ -576,7 +612,11 @@ export default class MessageNexus<
       this.metricsThrottleTimer = setTimeout(() => {
         this.metricsThrottleTimer = null
         const metrics = this.getMetrics()
-        this.metricsCallbacks.forEach((callback) => callback(metrics))
+        this.metricsCallbacks.forEach((callback) => {
+          safeExecute(() => callback(metrics), (err) => {
+            this.logger.error('Error in metrics callback', { error: String(err) })
+          })
+        })
       }, 100)
     }
   }
@@ -652,6 +692,7 @@ export default class MessageNexus<
   }
 
   destroy() {
+    this._isDestroyed = true
     if (this.metricsThrottleTimer) {
       clearTimeout(this.metricsThrottleTimer)
       this.metricsThrottleTimer = null
@@ -667,7 +708,7 @@ export default class MessageNexus<
 
     this.driver.destroy?.()
 
-    this.scheduler.clearTasks()
+    this.scheduler.clearTasks(new NexusError('MessageNexus instance destroyed', NexusErrorCode.InstanceDestroyed))
     this.queue.clear()
     this.router.clear()
     this.requestPipeline.clear()
