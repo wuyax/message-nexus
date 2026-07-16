@@ -466,6 +466,16 @@ Flush the message queue, sending all cached messages.
 nexus.flushQueue()
 ```
 
+##### clearHandlers()
+
+Clear registered handlers by type.
+
+```typescript
+nexus.clearHandlers(type?: 'invoke' | 'notification' | 'all')
+```
+
+- `type`: The type of handlers to clear. Options are `'invoke'`, `'notification'`, or `'all'` (default).
+
 ##### destroy()
 
 Destroy the instance and clean up resources.
