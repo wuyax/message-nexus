@@ -691,6 +691,19 @@ export default class MessageNexus<
     await this._sendMessage(message)
   }
 
+  /**
+   * Clears registered handlers by type.
+   * @param type The type of handlers to clear: 'invoke', 'notification', or 'all' (default).
+   */
+  clearHandlers(type: 'invoke' | 'notification' | 'all' = 'all'): void {
+    if (type === 'all') {
+      this.router.clear()
+    } else {
+      this.router.clear(type)
+    }
+    this.logger.info(`Cleared handlers of type: ${type}`)
+  }
+
   destroy() {
     this._isDestroyed = true
     if (this.metricsThrottleTimer) {

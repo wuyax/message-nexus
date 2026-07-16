@@ -805,4 +805,36 @@ describe('Interceptors', () => {
     expect(nexus.getMetrics().messagesFailed).toBe(1)
     expect(errorHandler).toHaveBeenCalled()
   })
+
+  describe('clearHandlers', () => {
+    it('should selectively clear handlers by type and keep the nexus functional', async () => {
+      const driver = new MockDriver()
+      const nexus = new MessageNexus(driver, { loggerEnabled: false })
+      const invokeHandler = vi.fn().mockResolvedValue('ok')
+      const notifyHandler = vi.fn()
+
+      nexus.handle('INVOKE_METHOD', invokeHandler)
+      nexus.onNotification('NOTIFY_METHOD', notifyHandler)
+
+      expect(nexus.getHandlersCount()).toBe(1)
+      expect(nexus.getNotificationMethodsCount()).toBe(1)
+
+      // Clear invoke only
+      nexus.clearHandlers('invoke')
+      expect(nexus.getHandlersCount()).toBe(0)
+      expect(nexus.getNotificationMethodsCount()).toBe(1)
+
+      // Re-register invoke and clear notification only
+      nexus.handle('INVOKE_METHOD', invokeHandler)
+      nexus.clearHandlers('notification')
+      expect(nexus.getHandlersCount()).toBe(1)
+      expect(nexus.getNotificationMethodsCount()).toBe(0)
+
+      // Re-register notification and clear all
+      nexus.onNotification('NOTIFY_METHOD', notifyHandler)
+      nexus.clearHandlers()
+      expect(nexus.getHandlersCount()).toBe(0)
+      expect(nexus.getNotificationMethodsCount()).toBe(0)
+    })
+  })
 })
