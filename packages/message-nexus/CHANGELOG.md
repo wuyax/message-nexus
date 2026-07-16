@@ -1,5 +1,23 @@
 # message-nexus
 
+## 1.3.0 (2026-07-16)
+
+### 🚀 New Features
+- **Selective Event Clearing (`clearHandlers`)**:
+  - Added `nexus.clearHandlers(type?: 'invoke' | 'notification' | 'all')` to allow clearing RPC/Invoke handlers and/or Notification listeners without destroying the instance or dropping connections.
+- **Public Inspection & Statistics APIs**:
+  - Introduced `getHandlersCount()`, `getNotificationMethodsCount()`, `getQueueLength()`, `getQueueSnapshot()`, and `getPendingTasksCount()` to monitor internal states in a type-safe manner.
+
+### 🛠️ Refactoring & Performance
+  - **Architectural Decoupling**:
+    - Decoupled `MessageNexus` into dedicated core classes: `MessageQueue` (buffer queue), `RpcScheduler` (timeout and response routing), and `EventRouter` (message verification).
+- **Koa-style Middleware Pipeline**:
+  - Replaced simple array interceptors with an asynchronous Koa-style middleware pipeline (`MiddlewarePipeline`) to handle request and response modifications cleanly.
+- **Harden Runtime Safety**:
+  - Enforced strict JSON-RPC 2.0 runtime compliance check in `EventRouter`.
+  - Added defensive execution wrappers for user callbacks (metrics, errors, interceptors) to prevent pipeline crashes.
+  - Correctly rejects pending RPC tasks with the `InstanceDestroyed` error code on instance destruction.
+
 ## 1.2.0
 
 ### Minor Changes
