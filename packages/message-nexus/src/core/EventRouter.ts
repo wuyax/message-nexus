@@ -78,9 +78,13 @@ export class EventRouter<
     return this.notificationHandlers.size
   }
 
-  clear(): void {
-    this.invokeHandlers.clear()
-    this.notificationHandlers.clear()
+  clear(type?: 'invoke' | 'notification'): void {
+    if (!type || type === 'invoke') {
+      this.invokeHandlers.clear()
+    }
+    if (!type || type === 'notification') {
+      this.notificationHandlers.clear()
+    }
   }
 
   static validateMessage(data: unknown): data is Message {

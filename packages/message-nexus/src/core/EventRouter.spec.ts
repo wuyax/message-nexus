@@ -84,3 +84,32 @@ describe('EventRouter validation', () => {
     })).toBe(false)
   })
 })
+
+describe('EventRouter clearing', () => {
+  it('should selectively clear invoke or notification handlers', () => {
+    const router = new EventRouter()
+    router.handle('testInvoke', () => 'res')
+    router.onNotification('testNotify', () => {})
+
+    expect(router.invokeHandlersCount).toBe(1)
+    expect(router.notificationHandlersCount).toBe(1)
+
+    // Test clearing only invoke
+    router.clear('invoke')
+    expect(router.invokeHandlersCount).toBe(0)
+    expect(router.notificationHandlersCount).toBe(1)
+
+    // Re-add invoke and test clearing only notification
+    router.handle('testInvoke', () => 'res')
+    router.clear('notification')
+    expect(router.invokeHandlersCount).toBe(1)
+    expect(router.notificationHandlersCount).toBe(0)
+
+    // Test clearing all
+    router.onNotification('testNotify', () => {})
+    router.clear()
+    expect(router.invokeHandlersCount).toBe(0)
+    expect(router.notificationHandlersCount).toBe(0)
+  })
+})
+
